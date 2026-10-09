@@ -1,0 +1,19 @@
+{
+  "firestore": {
+    "database": "(default)",
+    "location": "asia-northeast1",
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
+  },
+  "storage": {
+    "rules": "storage.rules"
+  },
+  "auth": {
+    "providers": {
+      "googleSignIn": {
+        "oAuthBrandDisplayName": "CinemaFeel",
+        "supportEmail": "m.erdene8989@gmail.com"
+      }
+    }
+  }
+}
