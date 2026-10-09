@@ -272,6 +272,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             onClose={() => setSelected(null)}
             isOwned={owned.includes(selected.id)}
             subscribed={subscribed}
+            signedIn={Boolean(user)}
             onCheckout={(mode) => beginCheckout(mode, selected)}
             onWatch={() => watch(selected)}
           />

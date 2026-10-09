@@ -10,6 +10,7 @@ export function FilmModal({
   onClose,
   isOwned,
   subscribed,
+  signedIn,
   onCheckout,
   onWatch,
 }: {
@@ -18,6 +19,7 @@ export function FilmModal({
   onClose: () => void;
   isOwned: boolean;
   subscribed: boolean;
+  signedIn: boolean;
   onCheckout: (mode: CheckoutMode) => void;
   onWatch: () => void;
 }) {
@@ -59,7 +61,7 @@ export function FilmModal({
               </>
             )}
           </div>
-          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{available ? "Таны эрх идэвхтэй байна." : "Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног үргэлжилнэ."}</p>
+          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{available && signedIn ? "Таны эрх идэвхтэй байна." : available ? "Тоглуулах үед нэвтрэлт шалгана." : "Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног үргэлжилнэ."}</p>
         </div>
       </div>
     </Modal>
