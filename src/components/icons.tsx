@@ -46,9 +46,9 @@ export function Logo({ onClick, href = "/" }: { onClick?: () => void; href?: str
   );
 }
 
-export function Modal({ children, onClose, wide = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean }) {
+export function Modal({ children, onClose, wide = false, priority = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean }) {
   return (
-    <div className="fixed inset-0 z-[70] grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-md" role="dialog" aria-modal="true">
+    <div className={`fixed inset-0 ${priority ? "z-[80]" : "z-[70]"} grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-md`} role="dialog" aria-modal="true">
       <div className={`relative my-6 w-full ${wide ? "max-w-3xl" : "max-w-md"} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
         <button onClick={onClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/30 text-zinc-300 backdrop-blur-md hover:bg-white/10" aria-label="Хаах">
           <Icon name="close" />

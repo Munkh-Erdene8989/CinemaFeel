@@ -76,7 +76,7 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
   };
 
   return (
-    <Modal onClose={onClose}>
+    <Modal onClose={onClose} priority>
       <div className="p-7 sm:p-9">
         <div className="mb-7 grid h-12 w-12 place-items-center rounded-2xl bg-[#ff3d56]/15 text-[#ff536a]">
           <Icon name={step === "email" ? "mail" : "lock"} className="h-6 w-6" />
