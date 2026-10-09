@@ -155,12 +155,6 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   };
 
   const watch = (film: Series) => {
-    if (!user) {
-      setSelected(film);
-      setPending("watch");
-      setAuthOpen(true);
-      return;
-    }
     setSelected(null);
     router.push(`/watch/${film.id}/1`);
   };

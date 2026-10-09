@@ -10,11 +10,13 @@ import { useSite } from "./site-provider";
 
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, openAuth, openFilm } = useSite();
+  const { series, user, openAuth, openFilm, beginCheckout } = useSite();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
   const [error, setError] = useState("");
+  const [needsAuth, setNeedsAuth] = useState(false);
+  const [needsPay, setNeedsPay] = useState(false);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -31,36 +33,52 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
 
   useEffect(() => {
     if (!film) return;
-    if (!user) {
-      setLoading(false);
-      setError("Үзэхийн тулд нэвтэрнэ үү.");
-      return;
-    }
     if (!current) {
       setLoading(false);
       setUrl("");
-      setError(episodes.length ? "" : "");
+      setNeedsAuth(false);
+      setNeedsPay(false);
       return;
     }
     if (!current.storagePath) {
       setLoading(false);
       setUrl("");
+      setNeedsAuth(false);
+      setNeedsPay(false);
       setError("Энэ ангийн видео оруулаагүй байна.");
+      return;
+    }
+    if (!user) {
+      setLoading(false);
+      setUrl("");
+      setNeedsPay(false);
+      setNeedsAuth(true);
+      setError("");
       return;
     }
     let cancelled = false;
     (async () => {
       setLoading(true);
       setError("");
+      setNeedsAuth(false);
+      setNeedsPay(false);
       const token = await clientAuth().currentUser?.getIdToken();
       const response = await fetch("/api/media/play", {
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ seriesId, episodeId: current.id }),
       });
-      const data = (await response.json()) as { error?: string; url?: string };
+      const data = (await response.json()) as { error?: string; url?: string; code?: string };
       if (cancelled) return;
       setLoading(false);
+      if (data.code === "auth") {
+        setNeedsAuth(true);
+        return;
+      }
+      if (data.code === "paywall") {
+        setNeedsPay(true);
+        return;
+      }
       if (!response.ok || !data.url) {
         setUrl("");
         setError(data.error || "Видео нээж чадсангүй.");
@@ -114,10 +132,22 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               />
             ) : (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
-                {loading ? "Ачааллаж байна..." : error || "Видео оруулаагүй байна."}
-                {!user && (
-                  <button onClick={openAuth} className="mt-4 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-black">Нэвтрэх</button>
-                )}
+                {film?.image && !loading && <img src={film.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
+                <div className="relative">
+                  {loading ? "Ачааллаж байна..." : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
+                  {needsAuth && (
+                    <button onClick={openAuth} className="mt-4 flex h-11 items-center gap-2 rounded-full bg-white px-5 text-xs font-extrabold text-black">
+                      <Icon name="play" className="h-4 w-4" fill />
+                      Нэвтэрч үзэх
+                    </button>
+                  )}
+                  {needsPay && film && (
+                    <div className="mt-4 grid gap-2">
+                      <button onClick={() => beginCheckout("single", film)} className="h-11 rounded-full bg-white px-5 text-xs font-extrabold text-black">Кино авах</button>
+                      <button onClick={() => beginCheckout("subscription", film)} className="h-11 rounded-full border border-white/20 px-5 text-xs font-extrabold">Сарын эрх авах</button>
+                    </div>
+                  )}
+                </div>
               </div>
             )}
           </div>
