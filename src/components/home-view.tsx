@@ -21,7 +21,7 @@ export function HomeView() {
   return (
     <>
       <section className="relative min-h-[710px] overflow-hidden pt-[72px]">
-        <img src={featured?.image || photos.hero} alt="Онцлох кино" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
+        <img src={featured?.cover || featured?.image || photos.hero} alt="Онцлох кино" className="absolute inset-0 h-full w-full object-cover object-[62%_center]" />
         <div className="absolute inset-0 bg-[linear-gradient(90deg,#08080a_0%,rgba(8,8,10,.9)_38%,rgba(8,8,10,.15)_75%),linear-gradient(0deg,#08080a_0%,transparent_55%)]" />
         <div className="relative mx-auto flex min-h-[638px] max-w-[1440px] items-center px-5 pb-16 pt-16 md:px-10 lg:px-16">
           <div className="max-w-2xl">

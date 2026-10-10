@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { posterUrl, seriesPayload } from "@/lib/catalog";
+import { posterUrl, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 
@@ -22,9 +22,14 @@ export async function PATCH(request: NextRequest, context: Context) {
   if (typeof body.posterPath === "string" && body.posterPath) {
     payload.image = await posterUrl(body.posterPath);
   }
+  if (typeof body.coverPath === "string" && body.coverPath) {
+    payload.cover = await posterUrl(body.coverPath);
+  }
   if (!payload.title) return jsonError("Киноны нэр оруулна уу.");
-  await ref.set(payload, { merge: true });
-  return NextResponse.json({ ok: true, image: payload.image });
+  let shareCode = String(current.data()?.shareCode ?? "");
+  if (!shareCode) shareCode = await uniqueShareCode();
+  await ref.set({ ...payload, shareCode }, { merge: true });
+  return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode });
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
@@ -41,6 +46,8 @@ export async function DELETE(request: NextRequest, context: Context) {
   );
   const [posters] = await adminBucket().getFiles({ prefix: `posters/${id}/` });
   await Promise.all(posters.map((file) => file.delete({ ignoreNotFound: true })));
+  const [covers] = await adminBucket().getFiles({ prefix: `covers/${id}/` });
+  await Promise.all(covers.map((file) => file.delete({ ignoreNotFound: true })));
   const [videos] = await adminBucket().getFiles({ prefix: `videos/${id}/` });
   await Promise.all(videos.map((file) => file.delete({ ignoreNotFound: true })));
   await ref.delete();

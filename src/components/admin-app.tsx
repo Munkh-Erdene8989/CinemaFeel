@@ -20,7 +20,30 @@ async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
-async function uploadAdminFile(file: File, kind: "poster" | "video", seriesId: string) {
+function shareHref(code: string) {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `${origin}/s/${code}`;
+}
+
+async function copyText(value: string) {
+  try {
+    await navigator.clipboard.writeText(value);
+    return true;
+  } catch {
+    const area = document.createElement("textarea");
+    area.value = value;
+    area.style.position = "fixed";
+    area.style.opacity = "0";
+    document.body.appendChild(area);
+    area.focus();
+    area.select();
+    const copied = document.execCommand("copy");
+    area.remove();
+    return copied;
+  }
+}
+
+async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", seriesId: string) {
   const created = await adminFetch<{ uploadUrl: string; storagePath: string }>("/api/admin/upload-url", {
     method: "POST",
     body: JSON.stringify({ kind, seriesId, contentType: file.type || "application/octet-stream", fileName: file.name }),
@@ -260,7 +283,21 @@ function ContentAdmin({ content, reload, notify }: { content: SeriesWithEpisodes
                 <td className="px-5">
                   <button onClick={() => toggleStatus(film)} className={`rounded-full px-2 py-1 text-[9px] font-black ${film.status === "Нийтлэгдсэн" ? "bg-emerald-400/10 text-emerald-400" : "bg-amber-400/10 text-amber-400"}`}>{film.status}</button>
                 </td>
-                <td className="px-5"><button onClick={() => setEditing(film)} className="font-bold text-zinc-500 hover:text-white">Засах</button></td>
+                <td className="px-5">
+                  <div className="flex gap-3">
+                    <button
+                      disabled={!film.shareCode}
+                      onClick={() => {
+                        if (!film.shareCode) return;
+                        copyText(shareHref(film.shareCode)).then((copied) => notify(copied ? "Хуваалцах линк хуулагдлаа." : "Линкийг гараар хуулна уу."));
+                      }}
+                      className="font-bold text-zinc-500 hover:text-white disabled:opacity-40"
+                    >
+                      Линк
+                    </button>
+                    <button onClick={() => setEditing(film)} className="font-bold text-zinc-500 hover:text-white">Засах</button>
+                  </div>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -289,6 +326,7 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
     description: film?.description ?? "",
     price: film?.price ?? 0,
     image: film?.image ?? "",
+    cover: film?.cover ?? "",
     status: film?.status ?? "Ноорог",
     featured: film?.featured ?? false,
     year: film?.year ?? 2026,
@@ -296,6 +334,8 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
   });
   const [episodes, setEpisodes] = useState<Episode[]>(film?.episodeList ?? []);
   const [seriesId, setSeriesId] = useState(film?.id ?? "");
+  const [shareCode, setShareCode] = useState(film?.shareCode ?? "");
+  const [copied, setCopied] = useState(false);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
@@ -306,12 +346,14 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
     try {
       const payload = { ...form, access: Number(form.price) === 0 ? "free" : "paid", episodes: episodes.length || 1 };
       if (!seriesId) {
-        const created = await adminFetch<{ id: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
+        const created = await adminFetch<{ id: string; shareCode: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
         setSeriesId(created.id);
+        setShareCode(created.shareCode);
         setBusy("");
         return created.id;
       }
-      await adminFetch(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      const saved = await adminFetch<{ shareCode?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      if (saved.shareCode) setShareCode(saved.shareCode);
       setBusy("");
       return seriesId;
     } catch (cause) {
@@ -336,6 +378,25 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
     } catch (cause) {
       setBusy("");
       setError(cause instanceof Error ? cause.message : "Постер хуулж чадсангүй.");
+    }
+  };
+
+  const onCover = async (file: File) => {
+    const id = seriesId || (await saveMeta());
+    if (!id) return;
+    setBusy("Вэбсайт ковер хуулж байна...");
+    try {
+      const storagePath = await uploadAdminFile(file, "cover", id);
+      const saved = await adminFetch<{ cover: string; shareCode?: string }>(`/api/admin/series/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ coverPath: storagePath }),
+      });
+      update("cover", saved.cover);
+      if (saved.shareCode) setShareCode(saved.shareCode);
+      setBusy("");
+    } catch (cause) {
+      setBusy("");
+      setError(cause instanceof Error ? cause.message : "Ковер хуулж чадсангүй.");
     }
   };
 
@@ -381,6 +442,43 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
           </div>
           <AdminField label="Постерын URL"><input value={form.image} onChange={(e) => update("image", e.target.value)} className="admin-input" /></AdminField>
           <AdminField label="Постер файл"><input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && onPoster(e.target.files[0])} className="admin-input pt-2" /></AdminField>
+          <div className="sm:col-span-2">
+            <AdminField label="Вэбсайт ковер">
+              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                {form.cover ? (
+                  <img src={form.cover} alt="" className="aspect-[21/9] w-full object-cover" />
+                ) : (
+                  <div className="grid aspect-[21/9] place-items-center px-6 text-center text-xs text-zinc-600">Нүүр хуудсын өргөн ковер. Онцлох контент дээр харагдана.</div>
+                )}
+              </div>
+              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && onCover(e.target.files[0])} className="admin-input mt-3 pt-2" />
+            </AdminField>
+          </div>
+          <div className="sm:col-span-2">
+            <AdminField label="Хуваалцах линк">
+              {shareCode ? (
+                <div className="flex gap-2">
+                  <input readOnly value={shareHref(shareCode)} className="admin-input" />
+                  <button
+                    type="button"
+                    onClick={() => {
+                      copyText(shareHref(shareCode)).then((ok) => {
+                        if (!ok) return;
+                        setCopied(true);
+                        window.setTimeout(() => setCopied(false), 1600);
+                      });
+                    }}
+                    className="shrink-0 rounded-xl bg-white px-4 text-xs font-extrabold text-black"
+                  >
+                    {copied ? "Хуулсан" : "Хуулах"}
+                  </button>
+                </div>
+              ) : (
+                <p className="rounded-xl border border-white/10 px-4 py-3 text-xs text-zinc-500">Хадгалсны дараа богино линк гарна.</p>
+              )}
+            </AdminField>
+            {shareCode && form.status !== "Нийтлэгдсэн" && <p className="mt-2 text-[11px] text-zinc-600">Ноорог үед линк хаагдсан байна. Нийтэлсний дараа нээгдэнэ.</p>}
+          </div>
           <AdminField label="Төлөв">
             <select value={form.status} onChange={(e) => update("status", e.target.value)} className="admin-input"><option>Ноорог</option><option>Нийтлэгдсэн</option></select>
           </AdminField>

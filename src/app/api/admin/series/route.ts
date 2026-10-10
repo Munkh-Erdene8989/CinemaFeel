@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listSeries, newId, seriesPayload } from "@/lib/catalog";
+import { listSeries, newId, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 
@@ -15,6 +15,7 @@ export async function POST(request: NextRequest) {
   const payload = seriesPayload(body);
   if (!payload.title) return jsonError("Киноны нэр оруулна уу.");
   const id = newId();
-  await adminDb().collection("series").doc(id).set(payload);
-  return NextResponse.json({ id });
+  const shareCode = await uniqueShareCode();
+  await adminDb().collection("series").doc(id).set({ ...payload, shareCode });
+  return NextResponse.json({ id, shareCode });
 }

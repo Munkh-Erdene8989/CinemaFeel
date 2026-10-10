@@ -48,6 +48,8 @@ function asSeries(id: string, data: Record<string, unknown>): Series {
     price: Number(data.price ?? 0),
     access: data.access === "free" ? "free" : "paid",
     image: String(data.image ?? ""),
+    cover: String(data.cover ?? ""),
+    shareCode: String(data.shareCode ?? ""),
     views: Number(data.views ?? 0),
     status: data.status === "Ноорог" ? "Ноорог" : "Нийтлэгдсэн",
     featured: Boolean(data.featured),

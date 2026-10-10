@@ -14,6 +14,8 @@ export type Series = {
   price: number;
   access: Access;
   image: string;
+  cover: string;
+  shareCode: string;
   views: number;
   status: SeriesStatus;
   featured: boolean;

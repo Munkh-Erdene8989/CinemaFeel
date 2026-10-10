@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import type { Episode, Series } from "@/lib/types";
@@ -18,28 +18,27 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const [needsAuth, setNeedsAuth] = useState(false);
   const [needsPay, setNeedsPay] = useState(false);
   const [loading, setLoading] = useState(true);
+  const loadedFor = useRef("");
 
   useEffect(() => {
-    if (!firebaseConfigured() || !film) return;
+    if (!firebaseConfigured()) return;
+    let ignore = false;
     getDocs(collection(clientDb(), "series", seriesId, "episodes")).then((snap) => {
+      if (ignore) return;
       const list = snap.docs
         .map((item) => ({ id: item.id, ...(item.data() as Omit<Episode, "id">) }))
         .sort((a, b) => a.number - b.number);
       setEpisodes(list);
     });
-  }, [seriesId, film]);
+    return () => {
+      ignore = true;
+    };
+  }, [seriesId]);
 
   const current = episodes.find((item) => item.number === episodeNumber) ?? episodes[0];
 
   useEffect(() => {
-    if (!film) return;
-    if (!current) {
-      setLoading(false);
-      setUrl("");
-      setNeedsAuth(false);
-      setNeedsPay(false);
-      return;
-    }
+    if (!current?.id) return;
     if (!current.storagePath) {
       setLoading(false);
       setUrl("");
@@ -48,15 +47,18 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       setError("Энэ ангийн видео оруулаагүй байна.");
       return;
     }
-    if (!user) {
+    if (!user?.uid) {
       setLoading(false);
       setUrl("");
       setNeedsPay(false);
       setNeedsAuth(true);
       setError("");
+      loadedFor.current = "";
       return;
     }
-    let cancelled = false;
+    const requestKey = `${user.uid}:${current.id}`;
+    if (loadedFor.current === requestKey) return;
+    let ignore = false;
     (async () => {
       setLoading(true);
       setError("");
@@ -69,7 +71,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         body: JSON.stringify({ seriesId, episodeId: current.id }),
       });
       const data = (await response.json()) as { error?: string; url?: string; code?: string };
-      if (cancelled) return;
+      if (ignore) return;
       setLoading(false);
       if (data.code === "auth") {
         setNeedsAuth(true);
@@ -84,12 +86,13 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         setError(data.error || "Видео нээж чадсангүй.");
         return;
       }
+      loadedFor.current = requestKey;
       setUrl(data.url);
     })();
     return () => {
-      cancelled = true;
+      ignore = true;
     };
-  }, [film, user, current?.id, seriesId, episodes.length]);
+  }, [user?.uid, current?.id, current?.storagePath, seriesId]);
 
   const saveProgress = (seconds: number) => {
     if (!user || !current) return;
@@ -117,7 +120,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
           <div className="relative aspect-[9/16] bg-zinc-900">
             {url ? (
               <video
-                key={url}
+                key={current?.id}
                 src={url}
                 controls
                 controlsList="nodownload"
