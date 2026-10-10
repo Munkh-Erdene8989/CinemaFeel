@@ -206,7 +206,6 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             <nav className="ml-6 hidden items-center gap-7 text-sm font-semibold lg:flex">
               <a href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
               <a href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
-              <a href="/admin" className="text-zinc-500 hover:text-white">Админ</a>
             </nav>
             <div className="ml-auto flex items-center gap-2">
               {user ? (
@@ -230,7 +229,6 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             <div className="flex gap-5">
               <span>Үйлчилгээний нөхцөл</span>
               <a href={`mailto:${settings.email}`}>Тусламж</a>
-              <a href="/admin">Админ</a>
             </div>
           </div>
         </footer>

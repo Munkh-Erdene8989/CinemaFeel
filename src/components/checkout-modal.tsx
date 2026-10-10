@@ -94,13 +94,25 @@ export function CheckoutModal({
             {invoice.qrImage && (
               <img src={invoice.qrImage.startsWith("data:") ? invoice.qrImage : `data:image/png;base64,${invoice.qrImage}`} alt="QPay QR" className="mx-auto h-52 w-52 rounded-2xl bg-white p-3" />
             )}
-            <div className="mt-4 grid max-h-40 gap-2 overflow-y-auto">
-              {invoice.urls.map((item) => (
-                <a key={item.link} href={item.link} className="flex items-center gap-3 rounded-xl border border-white/10 px-3 py-2 text-xs font-bold text-zinc-200 hover:bg-white/5">
-                  {item.logo && <img src={item.logo} alt="" className="h-6 w-6 rounded" />}
-                  {item.description || item.name}
-                </a>
-              ))}
+            <div className="mt-4 grid max-h-52 grid-cols-3 gap-2 overflow-y-auto">
+              {invoice.urls.map((item) => {
+                const label = item.description || item.name;
+                return (
+                  <a
+                    key={item.link}
+                    href={item.link}
+                    title={label}
+                    aria-label={label}
+                    className="grid h-16 place-items-center rounded-xl border border-white/10 bg-white/[0.04] px-2 hover:bg-white/10"
+                  >
+                    {item.logo ? (
+                      <img src={item.logo} alt="" className="h-10 w-10 object-contain" />
+                    ) : (
+                      <span className="truncate text-[10px] font-bold text-zinc-300">{label}</span>
+                    )}
+                  </a>
+                );
+              })}
             </div>
             <button disabled={loading} onClick={check} className="mt-4 h-12 w-full rounded-xl bg-white text-sm font-extrabold text-black disabled:opacity-60">
               {loading ? "Төлбөр шалгаж байна..." : "Төлсөн, шалгах"}
