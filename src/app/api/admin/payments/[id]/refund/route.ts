@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
-import { assertAdmin, jsonError } from "@/lib/http";
+import { jsonError, requireSuper } from "@/lib/http";
 import { refundPayment } from "@/lib/qpay";
 import type { Payment } from "@/lib/types";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const gate = await requireSuper(request);
+  if (gate.error) return gate.error;
   const { id } = await context.params;
   const ref = adminDb().collection("payments").doc(id);
   const snap = await ref.get();

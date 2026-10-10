@@ -1,7 +1,7 @@
 import { randomBytes, randomUUID } from "crypto";
 import type { DocumentData } from "firebase-admin/firestore";
 import { adminBucket, adminDb } from "./firebase-admin";
-import type { Episode, Series, SeriesWithEpisodes } from "./types";
+import type { AdminSession, Episode, Series, SeriesWithEpisodes } from "./types";
 
 const shareAlphabet = "abcdefghjkmnpqrstuvwxyz23456789";
 
@@ -39,6 +39,9 @@ export function mapSeries(id: string, data: DocumentData): Series {
     cover: String(data.cover ?? ""),
     shareCode: String(data.shareCode ?? ""),
     views: Number(data.views ?? 0),
+    uniqueViews: Number(data.uniqueViews ?? 0),
+    ownerId: String(data.ownerId ?? ""),
+    ownerName: String(data.ownerName ?? ""),
     status: data.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог",
     featured: Boolean(data.featured),
     year: Number(data.year ?? new Date().getFullYear()),
@@ -94,6 +97,16 @@ export async function listSeries(): Promise<SeriesWithEpisodes[]> {
     }),
   );
   return series.sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function readManageableSeries(session: AdminSession, id: string) {
+  const ref = adminDb().collection("series").doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false as const, error: "Кино олдсонгүй.", status: 404 as const };
+  if (session.role !== "super" && snap.data()?.ownerId !== session.adminId) {
+    return { ok: false as const, error: "Энэ контентыг засах эрхгүй.", status: 403 as const };
+  }
+  return { ok: true as const, ref, snap };
 }
 
 export async function posterUrl(storagePath: string) {

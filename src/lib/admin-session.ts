@@ -1,4 +1,5 @@
 import { createHmac, timingSafeEqual, createHash } from "crypto";
+import type { AdminRole, AdminSession } from "./types";
 
 const COOKIE = "cf_admin";
 const WEEK = 60 * 60 * 24 * 7;
@@ -17,24 +18,36 @@ export function adminCookieName() {
   return COOKIE;
 }
 
-export function createAdminToken() {
-  const payload = Buffer.from(JSON.stringify({ role: "admin", exp: Date.now() + WEEK * 1000 })).toString("base64url");
+export function createAdminToken(session: AdminSession) {
+  const payload = Buffer.from(JSON.stringify({ ...session, exp: Date.now() + WEEK * 1000 })).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
 
-export function verifyAdminToken(token: string | undefined | null) {
-  if (!token || !process.env.ADMIN_SESSION_SECRET) return false;
+export function verifyAdminToken(token: string | undefined | null): AdminSession | null {
+  if (!token || !process.env.ADMIN_SESSION_SECRET) return null;
   const [payload, mac] = token.split(".");
-  if (!payload || !mac) return false;
+  if (!payload || !mac) return null;
   const expected = sign(payload);
   const left = Buffer.from(mac);
   const right = Buffer.from(expected);
-  if (left.length !== right.length || !timingSafeEqual(left, right)) return false;
+  if (left.length !== right.length || !timingSafeEqual(left, right)) return null;
   try {
-    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as { role?: string; exp?: number };
-    return data.role === "admin" && typeof data.exp === "number" && data.exp > Date.now();
+    const data = JSON.parse(Buffer.from(payload, "base64url").toString()) as {
+      role?: AdminRole | "admin";
+      adminId?: string;
+      name?: string;
+      exp?: number;
+    };
+    if (typeof data.exp !== "number" || data.exp <= Date.now()) return null;
+    if (data.role === "super" || (data.role === "admin" && !data.adminId)) {
+      return { role: "super", adminId: "super", name: data.name || "Super admin" };
+    }
+    if (data.role === "admin" && data.adminId) {
+      return { role: "admin", adminId: data.adminId, name: data.name || data.adminId };
+    }
+    return null;
   } catch {
-    return false;
+    return null;
   }
 }
 

@@ -4,6 +4,7 @@ import { userCanWatch } from "@/lib/access";
 import { mapSeries } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { jsonError, readUser } from "@/lib/http";
+import { recordUniqueView } from "@/lib/views";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
@@ -25,5 +26,6 @@ export async function POST(request: NextRequest) {
     expires: Date.now() + 2 * 60 * 60 * 1000,
   });
   await seriesSnap.ref.set({ views: FieldValue.increment(1) }, { merge: true });
+  await recordUniqueView(body.seriesId, user.uid, String(seriesSnap.data()?.ownerId ?? ""));
   return NextResponse.json({ url, title: episode.data()?.title || series.title });
 }

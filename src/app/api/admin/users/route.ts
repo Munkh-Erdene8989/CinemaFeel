@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { todayStamp } from "@/lib/format";
-import { assertAdmin, jsonError } from "@/lib/http";
+import { jsonError, requireSuper } from "@/lib/http";
 import type { AppUser } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const gate = await requireSuper(request);
+  if (gate.error) return gate.error;
   const snap = await adminDb().collection("users").get();
   const users = snap.docs
     .map((item) => ({ uid: item.id, ...(item.data() as Omit<AppUser, "uid">) }))
@@ -14,7 +15,8 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const gate = await requireSuper(request);
+  if (gate.error) return gate.error;
   const body = (await request.json().catch(() => ({}))) as { email?: string };
   const email = body.email?.trim().toLowerCase() ?? "";
   if (!email.includes("@")) return jsonError("Зөв email оруулна уу.");

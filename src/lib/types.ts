@@ -5,6 +5,22 @@ export type UserStatus = "Идэвхтэй" | "Түр зогссон";
 export type PaymentStatus = "Хүлээгдэж буй" | "Амжилттай" | "Буцаагдсан" | "Амжилтгүй";
 export type CheckoutMode = "single" | "subscription";
 
+export type AdminRole = "super" | "admin";
+
+export type AdminSession = {
+  role: AdminRole;
+  adminId: string;
+  name: string;
+};
+
+export type StaffAdmin = {
+  id: string;
+  username: string;
+  name: string;
+  active: boolean;
+  createdAt: number;
+};
+
 export type Series = {
   id: string;
   title: string;
@@ -17,6 +33,9 @@ export type Series = {
   cover: string;
   shareCode: string;
   views: number;
+  uniqueViews: number;
+  ownerId: string;
+  ownerName: string;
   status: SeriesStatus;
   featured: boolean;
   year: number;
@@ -99,4 +118,36 @@ export const defaultSettings: Settings = {
   notifications: true,
 };
 
+export type RevenueRow = {
+  seriesId: string;
+  title: string;
+  ownerId: string;
+  ownerName: string;
+  uniqueViews: number;
+  direct: number;
+  subscriptionShare: number;
+  total: number;
+  sharePercent: number;
+};
+
+export type AdminRevenue = {
+  adminId: string;
+  name: string;
+  contentCount: number;
+  uniqueViews: number;
+  direct: number;
+  subscriptionShare: number;
+  total: number;
+  sharePercent: number;
+};
+
+export type RevenueReport = {
+  subscriptionPool: number;
+  totalUniqueViews: number;
+  unallocated: number;
+  rows: RevenueRow[];
+  admins: AdminRevenue[];
+};
+
 export const genres = ["Романтик", "Драма", "Өшөө авалт", "Уран зөгнөлт"] as const;
+export const SUPER_ADMIN_ID = "super";

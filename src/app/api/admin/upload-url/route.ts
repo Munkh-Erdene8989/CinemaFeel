@@ -1,12 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
+import { readManageableSeries } from "@/lib/catalog";
 import { adminBucket } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 const allowed = new Set(["image/jpeg", "image/png", "image/webp", "image/jpg", "video/mp4", "video/webm", "video/quicktime"]);
 
 export async function POST(request: NextRequest) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const session = await assertAdmin(request);
+  if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
   const body = (await request.json().catch(() => ({}))) as { kind?: string; seriesId?: string; contentType?: string; fileName?: string };
+  if (body.seriesId) {
+    const loaded = await readManageableSeries(session, body.seriesId);
+    if (!loaded.ok) return jsonError(loaded.error, loaded.status);
+  }
   const contentType = body.contentType || "application/octet-stream";
   const folders = { poster: "posters", cover: "covers", video: "videos" } as const;
   const kind = body.kind as keyof typeof folders;

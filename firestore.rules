@@ -43,5 +43,13 @@ service cloud.firestore {
     match /otp/{docId} {
       allow read, write: if false;
     }
+
+    match /admins/{adminId} {
+      allow read, write: if false;
+    }
+
+    match /views/{viewId} {
+      allow read, write: if false;
+    }
   }
 }

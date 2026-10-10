@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { AppUser, Episode, Payment, SeriesWithEpisodes, Settings } from "@/lib/types";
+import type { AdminRevenue, AdminSession, AppUser, Episode, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { defaultSettings, genres } from "@/lib/types";
-import { formatMoney, formatViews } from "@/lib/format";
+import { formatDate, formatMoney, formatViews } from "@/lib/format";
 import { AdminField, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -59,12 +59,18 @@ async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", s
 
 export function AdminApp() {
   const [section, setSection] = useState("Хяналтын самбар");
+  const [session, setSession] = useState<AdminSession | null>(null);
   const [content, setContent] = useState<SeriesWithEpisodes[]>([]);
   const [users, setUsers] = useState<AppUser[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
+  const [revenue, setRevenue] = useState<RevenueReport | null>(null);
+  const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [notice, setNotice] = useState("");
-  const menu = [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Тохиргоо", "settings"]];
+  const superAdmin = session?.role === "super";
+  const menu = superAdmin
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Админууд", "users"], ["Тохиргоо", "settings"]]
+    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"]];
 
   const notify = (message: string) => {
     setNotice(message);
@@ -72,16 +78,25 @@ export function AdminApp() {
   };
 
   const reload = async () => {
-    const [seriesData, userData, paymentData, settingsData] = await Promise.all([
+    const sessionData = await adminFetch<AdminSession>("/api/admin/session");
+    const [seriesData, revenueData, settingsData] = await Promise.all([
       adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
-      adminFetch<{ users: AppUser[] }>("/api/admin/users"),
-      adminFetch<{ payments: Payment[] }>("/api/admin/payments"),
+      adminFetch<RevenueReport>("/api/admin/revenue"),
       adminFetch<{ settings: Settings }>("/api/admin/settings"),
     ]);
+    setSession(sessionData);
     setContent(seriesData.series);
+    setRevenue(revenueData);
+    setSettings(settingsData.settings);
+    if (sessionData.role !== "super") return;
+    const [userData, paymentData, staffData] = await Promise.all([
+      adminFetch<{ users: AppUser[] }>("/api/admin/users"),
+      adminFetch<{ payments: Payment[] }>("/api/admin/payments"),
+      adminFetch<{ admins: StaffAdmin[] }>("/api/admin/staff"),
+    ]);
     setUsers(userData.users);
     setPayments(paymentData.payments);
-    setSettings(settingsData.settings);
+    setStaff(staffData.admins);
   };
 
   useEffect(() => {
@@ -109,13 +124,13 @@ export function AdminApp() {
       <main className="lg:ml-64">
         <header className="flex h-20 items-center justify-between border-b border-white/[.07] px-5 md:px-8">
           <div>
-            <p className="text-xs text-zinc-600">{settings.name} Admin</p>
+            <p className="text-xs text-zinc-600">{settings.name} · {superAdmin ? "Super admin" : session?.name || "Админ"}</p>
             <h1 className="mt-1 text-lg font-black">{section}</h1>
           </div>
           <div className="flex items-center gap-3">
             <a href="/" className="text-xs font-bold text-zinc-500 lg:hidden">Сайт руу буцах</a>
             <button onClick={() => fetch("/api/admin/logout", { method: "POST" }).then(() => (window.location.href = "/admin/login"))} className="text-xs font-bold text-zinc-500">Гарах</button>
-            <span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff3d56] text-xs font-black">A</span>
+            <span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff3d56] text-xs font-black">{(superAdmin ? "S" : session?.name || "A").slice(0, 1).toUpperCase()}</span>
           </div>
         </header>
         <div className="p-5 md:p-8">
@@ -124,11 +139,14 @@ export function AdminApp() {
               <button key={label} onClick={() => setSection(label)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"}`}>{label}</button>
             ))}
           </div>
-          {section === "Хяналтын самбар" && <Dashboard content={content} users={users} payments={payments} />}
-          {section === "Контент" && <ContentAdmin content={content} reload={reload} notify={notify} />}
-          {section === "Хэрэглэгчид" && <UsersAdmin users={users} reload={reload} notify={notify} />}
-          {section === "Төлбөр" && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
-          {section === "Тохиргоо" && <SettingsAdmin settings={settings} reload={reload} notify={notify} />}
+          {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
+          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} />}
+          {section === "Контент" && <ContentAdmin content={content} showOwner={superAdmin} reload={reload} notify={notify} />}
+          {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} />}
+          {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} reload={reload} notify={notify} />}
+          {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
+          {section === "Админууд" && superAdmin && <StaffAdmin staff={staff} reload={reload} notify={notify} />}
+          {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} reload={reload} notify={notify} />}
         </div>
       </main>
       {notice && (
@@ -224,7 +242,34 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
   );
 }
 
-function ContentAdmin({ content, reload, notify }: { content: SeriesWithEpisodes[]; reload: () => Promise<void>; notify: (message: string) => void }) {
+function AdminHome({ content, mine }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue }) {
+  const stats = [
+    ["Миний орлого", formatMoney(mine?.total ?? 0), "нэгж борлуулалт + сарын хувь", "card"],
+    ["Нэгж борлуулалт", formatMoney(mine?.direct ?? 0), "таны контентын шууд худалдан авалт", "film"],
+    ["Сарын эрхийн хувь", formatMoney(mine?.subscriptionShare ?? 0), `${(mine?.sharePercent ?? 0).toFixed(1)}%`, "chart"],
+    ["Давтагдаагүй үзэлт", formatViews(mine?.uniqueViews ?? 0), `${content.length} контент`, "play"],
+  ];
+  return (
+    <>
+      <h2 className="text-2xl font-black">Миний тойм</h2>
+      <p className="mt-1 text-sm text-zinc-600">Зөвхөн таны оруулсан контент болон түүнээс тооцсон орлого.</p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        {stats.map(([label, value, change, icon]) => (
+          <div key={label} className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500">{label}</span>
+              <Icon name={icon} className="h-4 w-4 text-zinc-600" />
+            </div>
+            <p className="mt-5 text-2xl font-black">{value}</p>
+            <p className="mt-2 text-xs font-bold text-emerald-400">{change}</p>
+          </div>
+        ))}
+      </div>
+    </>
+  );
+}
+
+function ContentAdmin({ content, showOwner, reload, notify }: { content: SeriesWithEpisodes[]; showOwner: boolean; reload: () => Promise<void>; notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
   const [editing, setEditing] = useState<SeriesWithEpisodes | "new" | null>(null);
@@ -263,7 +308,7 @@ function ContentAdmin({ content, reload, notify }: { content: SeriesWithEpisodes
       <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[820px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
-            <tr>{["КОНТЕНТ", "ТӨРӨЛ", "ҮНЭ", "ҮЗЭЛТ", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4 font-bold">{heading}</th>)}</tr>
+            <tr>{["КОНТЕНТ", "ТӨРӨЛ", ...(showOwner ? ["АДМИН"] : []), "ҮНЭ", "ҮЗЭЛТ", "1 ҮЗЭЛТ", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4 font-bold">{heading}</th>)}</tr>
           </thead>
           <tbody>
             {visible.map((film) => (
@@ -278,8 +323,10 @@ function ContentAdmin({ content, reload, notify }: { content: SeriesWithEpisodes
                   </div>
                 </td>
                 <td className="px-5 text-zinc-400">{film.genre}</td>
+                {showOwner && <td className="px-5 text-zinc-400">{film.ownerName || "Super admin"}</td>}
                 <td className="px-5 font-bold">{film.price ? formatMoney(film.price) : "Үнэгүй"}</td>
                 <td className="px-5 text-zinc-400">{formatViews(film.views)}</td>
+                <td className="px-5 text-zinc-400">{formatViews(film.uniqueViews || 0)}</td>
                 <td className="px-5">
                   <button onClick={() => toggleStatus(film)} className={`rounded-full px-2 py-1 text-[9px] font-black ${film.status === "Нийтлэгдсэн" ? "bg-emerald-400/10 text-emerald-400" : "bg-amber-400/10 text-amber-400"}`}>{film.status}</button>
                 </td>
@@ -674,6 +721,142 @@ function SettingsAdmin({ settings, reload, notify }: { settings: Settings; reloa
           ))}
         </div>
         <button onClick={save} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black">Өөрчлөлт хадгалах</button>
+      </div>
+    </div>
+  );
+}
+
+function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; showOwners: boolean }) {
+  const rows = revenue?.rows ?? [];
+  const admins = revenue?.admins ?? [];
+  return (
+    <div>
+      <h2 className="text-2xl font-black">Орлого</h2>
+      <p className="mt-1 max-w-3xl text-sm text-zinc-600">
+        Нэг контент худалдаж авсан дүн бүтнээрээ түүнийг оруулсан админд орно. Сарын эрхийн нийт орлогыг бүх контентийн давтагдаагүй үзэлтээр хуваана. Нэг хэрэглэгч нэг контентийг хэдэн ч удаа үзсэн 1 үзэлт.
+      </p>
+      <div className="mt-5 grid gap-4 sm:grid-cols-3">
+        <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+          <p className="text-xs font-bold text-zinc-500">Сарын эрхийн сан</p>
+          <p className="mt-3 text-2xl font-black">{formatMoney(revenue?.subscriptionPool ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+          <p className="text-xs font-bold text-zinc-500">Нийт давтагдаагүй үзэлт</p>
+          <p className="mt-3 text-2xl font-black">{formatViews(revenue?.totalUniqueViews ?? 0)}</p>
+        </div>
+        <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+          <p className="text-xs font-bold text-zinc-500">{showOwners ? "Хуваарилаагүй" : "Миний хувь"}</p>
+          <p className="mt-3 text-2xl font-black">{showOwners ? formatMoney(revenue?.unallocated ?? 0) : `${(admins[0]?.sharePercent ?? 0).toFixed(1)}%`}</p>
+        </div>
+      </div>
+      {showOwners && (
+        <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
+          <table className="w-full min-w-[760px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600">
+              <tr>{["АДМИН", "КОНТЕНТ", "1 ҮЗЭЛТ", "ХУВЬ", "НЭГЖ", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+            </thead>
+            <tbody>
+              {admins.map((admin) => (
+                <tr key={admin.adminId} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-5 py-4 font-bold">{admin.name}</td>
+                  <td className="px-5 text-zinc-400">{admin.contentCount}</td>
+                  <td className="px-5 text-zinc-400">{admin.uniqueViews}</td>
+                  <td className="px-5 text-zinc-400">{admin.sharePercent.toFixed(1)}%</td>
+                  <td className="px-5">{formatMoney(admin.direct)}</td>
+                  <td className="px-5">{formatMoney(admin.subscriptionShare)}</td>
+                  <td className="px-5 font-bold">{formatMoney(admin.total)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!admins.length && <p className="py-10 text-center text-sm text-zinc-600">Орлого алга.</p>}
+        </div>
+      )}
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
+        <table className="w-full min-w-[860px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600">
+            <tr>{["КОНТЕНТ", ...(showOwners ? ["АДМИН"] : []), "1 ҮЗЭЛТ", "ХУВЬ", "НЭГЖ БОРЛУУЛАЛТ", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+          </thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.seriesId} className="border-b border-white/[.05] last:border-0">
+                <td className="px-5 py-4 font-bold">{row.title}</td>
+                {showOwners && <td className="px-5 text-zinc-400">{row.ownerName}</td>}
+                <td className="px-5 text-zinc-400">{row.uniqueViews}</td>
+                <td className="px-5 text-zinc-400">{row.sharePercent.toFixed(1)}%</td>
+                <td className="px-5">{formatMoney(row.direct)}</td>
+                <td className="px-5">{formatMoney(row.subscriptionShare)}</td>
+                <td className="px-5 font-bold">{formatMoney(row.total)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <p className="py-10 text-center text-sm text-zinc-600">Контент алга.</p>}
+      </div>
+    </div>
+  );
+}
+
+function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: () => Promise<void>; notify: (message: string) => void }) {
+  const [name, setName] = useState("");
+  const [username, setUsername] = useState("");
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
+  const create = async () => {
+    setError("");
+    try {
+      await adminFetch("/api/admin/staff", { method: "POST", body: JSON.stringify({ name, username, password }) });
+      setName("");
+      setUsername("");
+      setPassword("");
+      await reload();
+      notify("Админ нэмэгдлээ.");
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Админ нэмэгдсэнгүй.");
+    }
+  };
+  const patch = async (id: string, body: { active?: boolean; password?: string }) => {
+    await adminFetch(`/api/admin/staff/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+    await reload();
+    notify(body.password ? "Нууц үг шинэчлэгдлээ." : "Админы төлөв шинэчлэгдлээ.");
+  };
+  return (
+    <div>
+      <h2 className="text-2xl font-black">Админууд</h2>
+      <p className="mt-1 text-sm text-zinc-600">Super admin админ нэмнэ. Энгийн админ зөвхөн өөрийн контент болон орлогоо харна.</p>
+      <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-4">
+        <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Нэр" className="admin-input" />
+        <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Нэвтрэх нэр" className="admin-input" autoCapitalize="none" />
+        <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Нууц үг" type="password" className="admin-input" />
+        <button disabled={!name.trim() || !username.trim() || password.length < 6} onClick={create} className="rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Админ нэмэх</button>
+      </div>
+      {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
+        <table className="w-full min-w-[720px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600">
+            <tr>{["НЭР", "НЭВТРЭХ НЭР", "НЭМСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+          </thead>
+          <tbody>
+            <tr className="border-b border-white/[.05]">
+              <td className="px-5 py-4 font-bold">Super admin</td>
+              <td className="px-5 text-zinc-400">орчны тохиргоо</td>
+              <td className="px-5 text-zinc-500">—</td>
+              <td className="px-5 font-bold text-emerald-400">Бүх эрх</td>
+              <td className="px-5 text-zinc-600">өөрчлөхгүй</td>
+            </tr>
+            {staff.map((admin) => (
+              <tr key={admin.id} className="border-b border-white/[.05] last:border-0">
+                <td className="px-5 py-4 font-bold">{admin.name}</td>
+                <td className="px-5 text-zinc-400">{admin.username}</td>
+                <td className="px-5 text-zinc-500">{admin.createdAt ? formatDate(admin.createdAt) : "—"}</td>
+                <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
+                <td className="px-5">
+                  <button onClick={() => patch(admin.id, { active: !admin.active })} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </div>
   );

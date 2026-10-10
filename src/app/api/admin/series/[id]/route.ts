@@ -1,17 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
-import { posterUrl, seriesPayload, uniqueShareCode } from "@/lib/catalog";
+import { posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 type Context = { params: Promise<{ id: string }> };
 
 export async function PATCH(request: NextRequest, context: Context) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const session = await assertAdmin(request);
+  if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
-  const ref = adminDb().collection("series").doc(id);
-  const current = await ref.get();
-  if (!current.exists) return jsonError("Кино олдсонгүй.", 404);
+  const loaded = await readManageableSeries(session, id);
+  if (!loaded.ok) return jsonError(loaded.error, loaded.status);
+  const { ref } = loaded;
+  const current = loaded.snap;
 
   if (typeof body.status === "string" && Object.keys(body).length === 1) {
     await ref.set({ status: body.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог" }, { merge: true });
@@ -33,9 +35,12 @@ export async function PATCH(request: NextRequest, context: Context) {
 }
 
 export async function DELETE(request: NextRequest, context: Context) {
-  if (!assertAdmin(request)) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const session = await assertAdmin(request);
+  if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
   const { id } = await context.params;
-  const ref = adminDb().collection("series").doc(id);
+  const loaded = await readManageableSeries(session, id);
+  if (!loaded.ok) return jsonError(loaded.error, loaded.status);
+  const { ref } = loaded;
   const episodes = await ref.collection("episodes").get();
   await Promise.all(
     episodes.docs.map(async (episode) => {
@@ -50,6 +55,12 @@ export async function DELETE(request: NextRequest, context: Context) {
   await Promise.all(covers.map((file) => file.delete({ ignoreNotFound: true })));
   const [videos] = await adminBucket().getFiles({ prefix: `videos/${id}/` });
   await Promise.all(videos.map((file) => file.delete({ ignoreNotFound: true })));
+  const views = await adminDb().collection("views").where("seriesId", "==", id).get();
+  for (let index = 0; index < views.docs.length; index += 400) {
+    const batch = adminDb().batch();
+    views.docs.slice(index, index + 400).forEach((item) => batch.delete(item.ref));
+    await batch.commit();
+  }
   await ref.delete();
   return NextResponse.json({ ok: true });
 }
