@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from "next/server";
+import { announceIfReady } from "@/lib/announce";
 import { posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
-import { assertAdmin, jsonError } from "@/lib/http";
+import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
 
 type Context = { params: Promise<{ id: string }> };
 
@@ -18,7 +19,8 @@ export async function PATCH(request: NextRequest, context: Context) {
 
   if (typeof body.status === "string" && Object.keys(body).length === 1) {
     await ref.set({ status: body.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог" }, { merge: true });
-    return NextResponse.json({ ok: true });
+    const announcement = await announceIfReady(id, siteOrigin(request));
+    return NextResponse.json({ ok: true, ...announcement });
   }
 
   const payload = seriesPayload({ ...current.data(), ...body }, Number(current.data()?.createdAt ?? Date.now()));
@@ -36,7 +38,8 @@ export async function PATCH(request: NextRequest, context: Context) {
   let shareCode = String(current.data()?.shareCode ?? "");
   if (!shareCode) shareCode = await uniqueShareCode();
   await ref.set({ ...payload, shareCode }, { merge: true });
-  return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode });
+  const announcement = await announceIfReady(id, siteOrigin(request));
+  return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode, ...announcement });
 }
 
 export async function DELETE(request: NextRequest, context: Context) {

@@ -2,7 +2,7 @@ import { createHash, randomInt } from "crypto";
 import { NextRequest } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { jsonError } from "@/lib/http";
-import { sendOtpEmail, smtpConfigured } from "@/lib/mail";
+import { resendConfigured, sendOtpEmail } from "@/lib/mail";
 import { NextResponse } from "next/server";
 
 function hash(value: string) {
@@ -13,8 +13,8 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { email?: string };
   const email = body.email?.trim().toLowerCase() ?? "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError("Зөв email хаяг оруулна уу.");
-  if (!smtpConfigured()) {
-    return jsonError("Имэйл илгээх тохиргоо дутуу байна. SMTP мэдээллээ нэмээд дахин оролдоно уу.", 503);
+  if (!resendConfigured()) {
+    return jsonError("Имэйл илгээх тохиргоо дутуу байна.", 503);
   }
 
   const ref = adminDb().collection("otp").doc(hash(email));
@@ -25,9 +25,10 @@ export async function POST(request: NextRequest) {
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   try {
-    await sendOtpEmail(email, code);
+    const sent = await sendOtpEmail(email, code);
+    if (!sent.ok) return jsonError("Имэйл илгээж чадсангүй. Дахин оролдоно уу.", 502);
   } catch {
-    return jsonError("Имэйл илгээж чадсангүй. SMTP тохиргоогоо шалгана уу.", 502);
+    return jsonError("Имэйл илгээж чадсангүй. Дахин оролдоно уу.", 502);
   }
 
   await ref.set({

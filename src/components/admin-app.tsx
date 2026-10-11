@@ -433,12 +433,15 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   };
   const visible = content.filter((film) => film.title.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || film.status === filter));
   const toggleStatus = async (film: SeriesWithEpisodes) => {
-    await adminFetch(`/api/admin/series/${film.id}`, {
+    const saved = await adminFetch<{ notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${film.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status: film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн" }),
     });
     await reload();
-    notify("Контентын төлөв шинэчлэгдлээ.");
+    const extra = saved.notified
+      ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү имэйл илгээлээ.`
+      : saved.notifyError || saved.notifyPending || "";
+    notify(extra ? `Контентын төлөв шинэчлэгдлээ. ${extra}` : "Контентын төлөв шинэчлэгдлээ.");
   };
   return (
     <div>
@@ -568,8 +571,18 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
   const [newGenre, setNewGenre] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const [mailed, setMailed] = useState("");
+  const mailNote = useRef("");
   const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
   const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  const rememberMail = (saved: { notified?: number; notifyError?: string; notifyPending?: string }) => {
+    const note = saved.notified
+      ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү шинэ киноны имэйл илгээлээ.`
+      : saved.notifyError || saved.notifyPending || "";
+    if (!note) return;
+    mailNote.current = note;
+    setMailed(note);
+  };
 
   const saveMeta = async () => {
     setBusy("Хадгалж байна...");
@@ -577,14 +590,16 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     try {
       const payload = { ...form, access: Number(form.price) === 0 ? "free" : "paid", episodes: episodes.length || 1 };
       if (!seriesId) {
-        const created = await adminFetch<{ id: string; shareCode: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
+        const created = await adminFetch<{ id: string; shareCode: string; notified?: number; notifyError?: string; notifyPending?: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
         setSeriesId(created.id);
         setShareCode(created.shareCode);
+        rememberMail(created);
         setBusy("");
         return created.id;
       }
-      const saved = await adminFetch<{ shareCode?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      const saved = await adminFetch<{ shareCode?: string; notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (saved.shareCode) setShareCode(saved.shareCode);
+      rememberMail(saved);
       setBusy("");
       return seriesId;
     } catch (cause) {
@@ -600,11 +615,12 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     setBusy("Постер хуулж байна...");
     try {
       const storagePath = await uploadAdminFile(file, "poster", id);
-      const saved = await adminFetch<{ image: string }>(`/api/admin/series/${id}`, {
+      const saved = await adminFetch<{ image: string; notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ posterPath: storagePath }),
       });
       update("image", saved.image);
+      rememberMail(saved);
       setBusy("");
     } catch (cause) {
       setBusy("");
@@ -618,12 +634,13 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     setBusy("Вэбсайт ковер хуулж байна...");
     try {
       const storagePath = await uploadAdminFile(file, "cover", id);
-      const saved = await adminFetch<{ cover: string; shareCode?: string }>(`/api/admin/series/${id}`, {
+      const saved = await adminFetch<{ cover: string; shareCode?: string; notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${id}`, {
         method: "PATCH",
         body: JSON.stringify({ coverPath: storagePath }),
       });
       update("cover", saved.cover);
       if (saved.shareCode) setShareCode(saved.shareCode);
+      rememberMail(saved);
       setBusy("");
     } catch (cause) {
       setBusy("");
@@ -758,13 +775,14 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
         </div>
         {busy && <p className="mt-4 text-xs font-bold text-[#ff6679]">{busy}</p>}
         {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
+        {mailed && <p className="mt-3 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-zinc-300">{mailed}</p>}
         <div className="mt-7 flex flex-wrap justify-between gap-3">
           {seriesId ? (
             <button onClick={async () => { await adminFetch(`/api/admin/series/${seriesId}`, { method: "DELETE" }); await onSaved("Контент устгагдлаа."); }} className="rounded-xl border border-red-500/20 px-5 py-3 text-xs font-bold text-red-400">Устгах</button>
           ) : <span />}
           <div className="flex gap-3">
             <button onClick={onClose} className="rounded-xl border border-white/10 px-5 py-3 text-xs font-bold text-zinc-400">Хаах</button>
-            <button disabled={!form.title.trim() || Boolean(busy)} onClick={async () => { const id = await saveMeta(); if (id) await onSaved(film ? "Контент шинэчлэгдлээ." : "Шинэ контент нэмэгдлээ."); }} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black disabled:opacity-40">Хадгалах</button>
+            <button disabled={!form.title.trim() || Boolean(busy)} onClick={async () => { const id = await saveMeta(); if (id) await onSaved(`${film ? "Контент шинэчлэгдлээ." : "Шинэ контент нэмэгдлээ."}${mailNote.current ? ` ${mailNote.current}` : ""}`); }} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black disabled:opacity-40">Хадгалах</button>
           </div>
         </div>
       </div>
@@ -921,7 +939,7 @@ function SettingsAdmin({ settings, reload, notify }: { settings: Settings; reloa
         <div className="border-t border-white/[.07] pt-5">
           {([
             ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google, email эсвэл утасны дугаараар шинээр бүртгүүлж болно."],
-            ["notifications", "Email мэдэгдэл", "Шинэ анги болон төлбөрийн мэдээлэл илгээхэд бэлэн."],
+            ["notifications", "Email мэдэгдэл", "Шинэ контент нийтлэхэд бүртгэлтэй хэрэглэгчдэд киноны линк, хөндлөн зурагтай имэйл илгээнэ."],
             ["maintenance", "Засварын горим", "Хэрэглэгчдэд түр хаалттай хуудас харуулна."],
           ] as const).map(([key, label, help]) => (
             <div key={key} className="flex items-center justify-between py-3">
