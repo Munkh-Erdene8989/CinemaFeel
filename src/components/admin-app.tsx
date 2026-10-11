@@ -66,10 +66,11 @@ export function AdminApp() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [revenue, setRevenue] = useState<RevenueReport | null>(null);
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
+  const [inviteCode, setInviteCode] = useState("");
   const [notice, setNotice] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Админууд", "users"], ["Тохиргоо", "settings"]]
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
     : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"]];
 
   const notify = (message: string) => {
@@ -78,13 +79,14 @@ export function AdminApp() {
   };
 
   const reload = async () => {
-    const sessionData = await adminFetch<AdminSession>("/api/admin/session");
+    const sessionData = await adminFetch<AdminSession & { inviteCode?: string }>("/api/admin/session");
     const [seriesData, revenueData, settingsData] = await Promise.all([
       adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
       adminFetch<RevenueReport>("/api/admin/revenue"),
       adminFetch<{ settings: Settings }>("/api/admin/settings"),
     ]);
     setSession(sessionData);
+    setInviteCode(sessionData.inviteCode || "");
     setContent(seriesData.series);
     setRevenue(revenueData);
     setSettings(settingsData.settings);
@@ -124,7 +126,7 @@ export function AdminApp() {
       <main className="lg:ml-64">
         <header className="flex h-20 items-center justify-between border-b border-white/[.07] px-5 md:px-8">
           <div>
-            <p className="text-xs text-zinc-600">{settings.name} · {superAdmin ? "Super admin" : session?.name || "Админ"}</p>
+            <p className="text-xs text-zinc-600">{settings.name} · {superAdmin ? "Super admin" : session?.name || "Контент бүтээгч"}</p>
             <h1 className="mt-1 text-lg font-black">{section}</h1>
           </div>
           <div className="flex items-center gap-3">
@@ -140,12 +142,12 @@ export function AdminApp() {
             ))}
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
-          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} />}
+          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} inviteCode={inviteCode} notify={notify} />}
           {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} reload={reload} notify={notify} />}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} />}
           {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} reload={reload} notify={notify} />}
           {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
-          {section === "Админууд" && superAdmin && <StaffAdmin staff={staff} reload={reload} notify={notify} />}
+          {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} reload={reload} notify={notify} />}
           {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} reload={reload} notify={notify} />}
         </div>
       </main>
@@ -287,17 +289,27 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
   );
 }
 
-function AdminHome({ content, mine }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue }) {
+function AdminHome({ content, mine, inviteCode, notify }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue; inviteCode: string; notify: (message: string) => void }) {
+  const referrals = mine?.referrals ?? [];
   const stats = [
-    ["Миний орлого", formatMoney(mine?.total ?? 0), "нэгж борлуулалт + сарын хувь", "card"],
-    ["Нэгж борлуулалт", formatMoney(mine?.direct ?? 0), "таны контентын шууд худалдан авалт", "film"],
-    ["Сарын эрхийн хувь", formatMoney(mine?.subscriptionShare ?? 0), `${(mine?.sharePercent ?? 0).toFixed(1)}%`, "chart"],
-    ["Давтагдаагүй үзэлт", formatViews(mine?.uniqueViews ?? 0), `${content.length} контент`, "play"],
+    ["Миний орлого", formatMoney(mine?.total ?? 0), "шууд 80% + сарын хувь + урилга", "card"],
+    ["Шууд борлуулалт", formatMoney(mine?.direct ?? 0), "таны контентын үнийн 80%", "film"],
+    ["Сарын эрхийн хувь", formatMoney(mine?.subscriptionShare ?? 0), `${(mine?.sharePercent ?? 0).toFixed(1)}% · ${formatViews(mine?.uniqueViews ?? 0)} үзэлт`, "chart"],
+    ["Урилгын орлого", formatMoney(mine?.referral ?? 0), "урьсан бүтээгчийн борлуулалтын 10%", "users"],
   ];
   return (
     <>
       <h2 className="text-2xl font-black">Миний тойм</h2>
-      <p className="mt-1 text-sm text-zinc-600">Зөвхөн таны оруулсан контент болон түүнээс тооцсон орлого.</p>
+      <p className="mt-1 text-sm text-zinc-600">Шууд борлуулалтын 80% танд, 20% платформд. Сарын эрхийн 50%-ийг үзэлтээр хуваана. {content.length} контент.</p>
+      {inviteCode && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-4">
+          <div>
+            <p className="text-xs font-bold text-zinc-500">Таны урилгын код</p>
+            <p className="mt-1 font-black tracking-[0.22em]">{inviteCode}</p>
+          </div>
+          <button onClick={() => copyText(inviteCode).then((copied) => notify(copied ? "Урилгын код хуулагдлаа." : "Кодыг гараар хуулна уу."))} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-zinc-300">Хуулах</button>
+        </div>
+      )}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
         {stats.map(([label, value, change, icon]) => (
           <div key={label} className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
@@ -309,6 +321,25 @@ function AdminHome({ content, mine }: { content: SeriesWithEpisodes[]; mine?: Ad
             <p className="mt-2 text-xs font-bold text-emerald-400">{change}</p>
           </div>
         ))}
+      </div>
+      <div className="mt-5 rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+        <div className="flex items-center justify-between gap-3">
+          <h3 className="text-sm font-black">Урилгаар орж ирсэн орлого</h3>
+          <span className="text-sm font-black">{formatMoney(mine?.referral ?? 0)}</span>
+        </div>
+        <p className="mt-1 text-xs text-zinc-600">Таны кодоор бүртгүүлсэн бүтээгчийн шууд борлуулалтын 10%. Сарын эрхэд хамаарахгүй.</p>
+        <div className="mt-4 divide-y divide-white/[.06]">
+          {referrals.map((item) => (
+            <div key={item.creatorId} className="flex items-center justify-between gap-3 py-3 text-sm">
+              <div>
+                <p className="font-bold">{item.name}</p>
+                <p className="mt-1 text-xs text-zinc-600">Борлуулалт {formatMoney(item.gross)}</p>
+              </div>
+              <p className="font-black">{formatMoney(item.reward)}</p>
+            </div>
+          ))}
+          {!referrals.length && <p className="py-6 text-center text-sm text-zinc-600">Урилгаар орсон борлуулалт алга.</p>}
+        </div>
       </div>
     </>
   );
@@ -394,7 +425,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
       <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[820px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
-            <tr>{["КОНТЕНТ", "ТӨРӨЛ", ...(showOwner ? ["АДМИН"] : []), "ҮНЭ", "ҮЗЭЛТ", "1 ҮЗЭЛТ", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4 font-bold">{heading}</th>)}</tr>
+            <tr>{["КОНТЕНТ", "ТӨРӨЛ", ...(showOwner ? ["БҮТЭЭГЧ"] : []), "ҮНЭ", "ҮЗЭЛТ", "1 ҮЗЭЛТ", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4 font-bold">{heading}</th>)}</tr>
           </thead>
           <tbody>
             {visible.map((film) => (
@@ -858,27 +889,30 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
     <div>
       <h2 className="text-2xl font-black">Орлого</h2>
       <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-        Нэг контент худалдаж авсан дүн бүтнээрээ түүнийг оруулсан админд орно. Сарын эрхийн нийт орлогыг бүх контентийн давтагдаагүй үзэлтээр хуваана. Нэг хэрэглэгч нэг контентийг хэдэн ч удаа үзсэн 1 үзэлт.
+        Шууд борлуулалтын 80% контент бүтээгчид, 20% платформд. Сарын эрхийн 50%-ийг давтагдаагүй үзэлтээр бүтээгчдэд хуваана. Урьсан бүтээгч нь уригдсан бүтээгчийн шууд борлуулалтын 10%-ийг авна.
       </p>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
-          <p className="text-xs font-bold text-zinc-500">Сарын эрхийн сан</p>
-          <p className="mt-3 text-2xl font-black">{formatMoney(revenue?.subscriptionPool ?? 0)}</p>
+          <p className="text-xs font-bold text-zinc-500">{showOwners ? "Сарын эрхийн 50%" : "Сарын эрхийн хувь"}</p>
+          <p className="mt-3 text-2xl font-black">{showOwners ? formatMoney(revenue?.subscriptionPool ?? 0) : formatMoney(admins[0]?.subscriptionShare ?? 0)}</p>
+          <p className="mt-2 text-xs text-zinc-600">{showOwners ? `Нийт ${formatMoney(revenue?.subscriptionGross ?? 0)}` : `${(admins[0]?.sharePercent ?? 0).toFixed(1)}% үзэлт`}</p>
         </div>
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
-          <p className="text-xs font-bold text-zinc-500">Нийт давтагдаагүй үзэлт</p>
-          <p className="mt-3 text-2xl font-black">{formatViews(revenue?.totalUniqueViews ?? 0)}</p>
+          <p className="text-xs font-bold text-zinc-500">{showOwners ? "Платформын хувь" : "Шууд борлуулалт"}</p>
+          <p className="mt-3 text-2xl font-black">{showOwners ? formatMoney((revenue?.platformSubscription ?? 0) + (revenue?.platformDirect ?? 0)) : formatMoney(admins[0]?.direct ?? 0)}</p>
+          <p className="mt-2 text-xs text-zinc-600">{showOwners ? "сарын 50% + шууд хураамж" : "борлуулалтын 80%"}</p>
         </div>
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
-          <p className="text-xs font-bold text-zinc-500">{showOwners ? "Хуваарилаагүй" : "Миний хувь"}</p>
-          <p className="mt-3 text-2xl font-black">{showOwners ? formatMoney(revenue?.unallocated ?? 0) : `${(admins[0]?.sharePercent ?? 0).toFixed(1)}%`}</p>
+          <p className="text-xs font-bold text-zinc-500">Урилгын урамшуулал</p>
+          <p className="mt-3 text-2xl font-black">{formatMoney(showOwners ? revenue?.referralPaid ?? 0 : admins[0]?.referral ?? 0)}</p>
+          <p className="mt-2 text-xs text-zinc-600">{showOwners ? `${formatViews(revenue?.totalUniqueViews ?? 0)} давтагдаагүй үзэлт` : "урьсан бүтээгчийн борлуулалтын 10%"}</p>
         </div>
       </div>
       {showOwners && (
         <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-          <table className="w-full min-w-[760px] text-left text-xs">
+          <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="border-b border-white/[.07] text-zinc-600">
-              <tr>{["АДМИН", "КОНТЕНТ", "1 ҮЗЭЛТ", "ХУВЬ", "НЭГЖ", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+              <tr>{["БҮТЭЭГЧ", "КОНТЕНТ", "1 ҮЗЭЛТ", "ХУВЬ", "ШУУД 80%", "САРЫН ЭРХ", "УРИЛГА", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
             </thead>
             <tbody>
               {admins.map((admin) => (
@@ -889,6 +923,7 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
                   <td className="px-5 text-zinc-400">{admin.sharePercent.toFixed(1)}%</td>
                   <td className="px-5">{formatMoney(admin.direct)}</td>
                   <td className="px-5">{formatMoney(admin.subscriptionShare)}</td>
+                  <td className="px-5">{formatMoney(admin.referral)}</td>
                   <td className="px-5 font-bold">{formatMoney(admin.total)}</td>
                 </tr>
               ))}
@@ -898,9 +933,9 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
         </div>
       )}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-        <table className="w-full min-w-[860px] text-left text-xs">
+        <table className="w-full min-w-[1040px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
-            <tr>{["КОНТЕНТ", ...(showOwners ? ["АДМИН"] : []), "1 ҮЗЭЛТ", "ХУВЬ", "НЭГЖ БОРЛУУЛАЛТ", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+            <tr>{["КОНТЕНТ", ...(showOwners ? ["БҮТЭЭГЧ"] : []), "1 ҮЗЭЛТ", "ХУВЬ", "БОРЛУУЛАЛТ", "БҮТЭЭГЧ 80%", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
           </thead>
           <tbody>
             {rows.map((row) => (
@@ -909,6 +944,7 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
                 {showOwners && <td className="px-5 text-zinc-400">{row.ownerName}</td>}
                 <td className="px-5 text-zinc-400">{row.uniqueViews}</td>
                 <td className="px-5 text-zinc-400">{row.sharePercent.toFixed(1)}%</td>
+                <td className="px-5 text-zinc-400">{formatMoney(row.gross)}</td>
                 <td className="px-5">{formatMoney(row.direct)}</td>
                 <td className="px-5">{formatMoney(row.subscriptionShare)}</td>
                 <td className="px-5 font-bold">{formatMoney(row.total)}</td>
@@ -935,45 +971,49 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
       setUsername("");
       setPassword("");
       await reload();
-      notify("Админ нэмэгдлээ.");
+      notify("Контент бүтээгч нэмэгдлээ.");
     } catch (cause) {
-      setError(cause instanceof Error ? cause.message : "Админ нэмэгдсэнгүй.");
+      setError(cause instanceof Error ? cause.message : "Контент бүтээгч нэмэгдсэнгүй.");
     }
   };
   const patch = async (id: string, body: { active?: boolean; password?: string }) => {
     await adminFetch(`/api/admin/staff/${id}`, { method: "PATCH", body: JSON.stringify(body) });
     await reload();
-    notify(body.password ? "Нууц үг шинэчлэгдлээ." : "Админы төлөв шинэчлэгдлээ.");
+    notify(body.password ? "Нууц үг шинэчлэгдлээ." : "Контент бүтээгчийн төлөв шинэчлэгдлээ.");
   };
   return (
     <div>
-      <h2 className="text-2xl font-black">Админууд</h2>
-      <p className="mt-1 text-sm text-zinc-600">Super admin админ нэмнэ. Энгийн админ зөвхөн өөрийн контент болон орлогоо харна.</p>
+      <h2 className="text-2xl font-black">Контент бүтээгчид</h2>
+      <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн 10,000₮ төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Бүтээгч зөвхөн өөрийн контент болон орлогоо харна.</p>
       <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Нэр" className="admin-input" />
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Нэвтрэх нэр" className="admin-input" autoCapitalize="none" />
         <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Нууц үг" type="password" className="admin-input" />
-        <button disabled={!name.trim() || !username.trim() || password.length < 6} onClick={create} className="rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Админ нэмэх</button>
+        <button disabled={!name.trim() || !username.trim() || password.length < 6} onClick={create} className="rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Бүтээгч нэмэх</button>
       </div>
       {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-        <table className="w-full min-w-[720px] text-left text-xs">
+        <table className="w-full min-w-[860px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
-            <tr>{["НЭР", "НЭВТРЭХ НЭР", "НЭМСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+            <tr>{["НЭР", "НЭВТРЭХ НЭР", "УРИЛГЫН КОД", "ХОЛБОО", "ТӨЛБӨР", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
           </thead>
           <tbody>
             <tr className="border-b border-white/[.05]">
               <td className="px-5 py-4 font-bold">Super admin</td>
               <td className="px-5 text-zinc-400">орчны тохиргоо</td>
               <td className="px-5 text-zinc-500">—</td>
+              <td className="px-5 text-zinc-500">—</td>
+              <td className="px-5 text-zinc-500">—</td>
               <td className="px-5 font-bold text-emerald-400">Бүх эрх</td>
               <td className="px-5 text-zinc-600">өөрчлөхгүй</td>
             </tr>
             {staff.map((admin) => (
               <tr key={admin.id} className="border-b border-white/[.05] last:border-0">
-                <td className="px-5 py-4 font-bold">{admin.name}</td>
+                <td className="px-5 py-4 font-bold">{admin.name}{admin.contentType && <small className="mt-1 block font-medium text-zinc-600">{admin.contentType}</small>}{admin.invitedByName && <small className="mt-1 block font-medium text-zinc-600">Урьсан: {admin.invitedByName}</small>}</td>
                 <td className="px-5 text-zinc-400">{admin.username}</td>
-                <td className="px-5 text-zinc-500">{admin.createdAt ? formatDate(admin.createdAt) : "—"}</td>
+                <td className="px-5 font-bold tracking-wider text-zinc-300">{admin.inviteCode || "—"}</td>
+                <td className="px-5 text-zinc-500">{admin.phone ? formatPhone(admin.phone) : "—"}{admin.email && <small className="block text-zinc-600">{admin.email}</small>}</td>
+                <td className={`px-5 font-bold ${admin.source === "self" && !admin.paid ? "text-amber-400" : "text-zinc-400"}`}>{admin.source === "self" ? (admin.paid ? "10,000₮" : "Хүлээгдэж буй") : "Гараар"}</td>
                 <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
                 <td className="px-5">
                   <button onClick={() => patch(admin.id, { active: !admin.active })} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>

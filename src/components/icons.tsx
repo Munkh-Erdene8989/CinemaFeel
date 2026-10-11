@@ -18,6 +18,8 @@ const paths: Record<string, string> = {
   settings: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2M3.5 12h2m13 0h2M6 6l1.5 1.5m9 9L18 18M18 6l-1.5 1.5m-9 9L6 18",
   plus: "M12 5v14M5 12h14",
   logout: "M10 5H5v14h5m4-3 4-4-4-4m4 4H9",
+  camera: "M9 6 10.5 4h3L15 6h4a2 2 0 0 1 2 2v10a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4Zm3 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z",
+  spark: "M12 2.5 13.4 8 19 9.5 13.4 11 12 16.5 10.6 11 5 9.5 10.6 8 12 2.5ZM18 13.5l.7 2.5 2.3.7-2.3.7-.7 2.4-.7-2.4-2.3-.7 2.3-.7.7-2.5Z",
 };
 
 export function Icon({ name, className = "h-5 w-5", fill = false }: { name: string; className?: string; fill?: boolean }) {

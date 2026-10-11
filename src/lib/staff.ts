@@ -28,13 +28,49 @@ export function validUsername(value: string) {
 }
 
 export function mapStaff(id: string, data: Record<string, unknown>): StaffAdmin {
+  const source = data.source === "self" ? "self" : "manual";
   return {
     id,
     username: String(data.username ?? ""),
     name: String(data.name ?? ""),
     active: data.active !== false,
     createdAt: Number(data.createdAt ?? 0),
+    phone: String(data.phone ?? ""),
+    email: String(data.email ?? ""),
+    paid: source === "self" ? data.paid === true : true,
+    source,
+    contentType: String(data.contentType ?? ""),
+    inviteCode: String(data.inviteCode ?? ""),
+    invitedByName: String(data.invitedByName ?? ""),
   };
+}
+
+const inviteAlphabet = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+export function normalizeInviteCode(value: string) {
+  return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
+}
+
+export function randomInviteCode(length = 6) {
+  const bytes = randomBytes(length);
+  return Array.from(bytes, (byte) => inviteAlphabet[byte % inviteAlphabet.length]).join("");
+}
+
+export async function uniqueInviteCode() {
+  for (let attempt = 0; attempt < 8; attempt += 1) {
+    const code = randomInviteCode();
+    const existing = await adminDb().collection("admins").where("inviteCode", "==", code).limit(1).get();
+    if (existing.empty) return code;
+  }
+  return randomInviteCode(8);
+}
+
+export async function findInviter(code: string) {
+  if (!code) return null;
+  const snap = await adminDb().collection("admins").where("inviteCode", "==", code).limit(1).get();
+  const doc = snap.docs[0];
+  if (!doc || doc.data().active === false) return null;
+  return { id: doc.id, name: String(doc.data().name || doc.data().username || ""), inviteCode: code };
 }
 
 export async function findStaffByUsername(username: string) {

@@ -3,7 +3,7 @@ export type SeriesStatus = "Нийтлэгдсэн" | "Ноорог";
 export type Plan = "Үндсэн" | "Plus";
 export type UserStatus = "Идэвхтэй" | "Түр зогссон";
 export type PaymentStatus = "Хүлээгдэж буй" | "Амжилттай" | "Буцаагдсан" | "Амжилтгүй";
-export type CheckoutMode = "single" | "subscription";
+export type CheckoutMode = "single" | "subscription" | "creator";
 
 export type AdminRole = "super" | "admin";
 
@@ -19,7 +19,18 @@ export type StaffAdmin = {
   name: string;
   active: boolean;
   createdAt: number;
+  phone: string;
+  email: string;
+  paid: boolean;
+  source: "self" | "manual";
+  contentType: string;
+  inviteCode: string;
+  invitedByName: string;
 };
+
+export const CREATOR_FEE = 10000;
+
+export const creatorContentTypes = ["Short drama", "Романтик", "Драма", "Комеди", "Триллер", "Бусад"] as const;
 
 export type Series = {
   id: string;
@@ -99,6 +110,7 @@ export type Payment = {
   qrImage: string;
   qrText: string;
   urls: QPayUrl[];
+  creatorId?: string;
 };
 
 export type Settings = {
@@ -151,10 +163,19 @@ export type RevenueRow = {
   ownerId: string;
   ownerName: string;
   uniqueViews: number;
+  gross: number;
   direct: number;
+  platformFee: number;
   subscriptionShare: number;
   total: number;
   sharePercent: number;
+};
+
+export type ReferralEarning = {
+  creatorId: string;
+  name: string;
+  gross: number;
+  reward: number;
 };
 
 export type AdminRevenue = {
@@ -162,14 +183,22 @@ export type AdminRevenue = {
   name: string;
   contentCount: number;
   uniqueViews: number;
+  gross: number;
   direct: number;
+  platformFee: number;
   subscriptionShare: number;
+  referral: number;
+  referrals: ReferralEarning[];
   total: number;
   sharePercent: number;
 };
 
 export type RevenueReport = {
+  subscriptionGross: number;
   subscriptionPool: number;
+  platformSubscription: number;
+  platformDirect: number;
+  referralPaid: number;
   totalUniqueViews: number;
   unallocated: number;
   rows: RevenueRow[];

@@ -22,6 +22,13 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
   if (payment.status === "Амжилттай") return { ok: true as const, already: true };
   if (payment.status === "Буцаагдсан") return { ok: false as const, error: "Төлбөр буцаагдсан байна." };
 
+  if (payment.mode === "creator") {
+    if (!payment.creatorId) return { ok: false as const, error: "Контент бүтээгч олдсонгүй." };
+    await db.collection("admins").doc(payment.creatorId).set({ active: true, paid: true, paidAt: Date.now() }, { merge: true });
+    await ref.set({ status: "Амжилттай", paymentId: qpayPaymentId, date: todayStamp() }, { merge: true });
+    return { ok: true as const, already: false };
+  }
+
   if (payment.mode === "subscription") {
     const userRef = db.collection("users").doc(payment.uid);
     const userSnap = await userRef.get();

@@ -9,6 +9,7 @@ import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { accountInitial, subscriptionActive } from "@/lib/format";
 import { AuthModal } from "./auth-modal";
+import { JoinModal } from "./join-modal";
 import { CheckoutModal } from "./checkout-modal";
 import { FilmModal } from "./film-modal";
 import { Icon, Logo } from "./icons";
@@ -73,6 +74,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [ready, setReady] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
+  const [joinOpen, setJoinOpen] = useState(false);
   const [selected, setSelected] = useState<Series | null>(null);
   const [checkout, setCheckout] = useState<CheckoutMode | null>(null);
   const [pending, setPending] = useState<Pending>(null);
@@ -211,15 +213,19 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               <a href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
             </nav>
             <div className="ml-auto flex items-center gap-2">
+              <button onClick={() => setJoinOpen(true)} className="flex h-10 shrink-0 items-center rounded-full bg-[#ff3d56] px-3 text-[11px] font-bold text-white sm:px-4 sm:text-xs">
+                <span className="sm:hidden">Нэгдэх</span>
+                <span className="hidden sm:inline">Бидэнтэй нэгдээрэй</span>
+              </button>
               {user ? (
                 <>
                   <a href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
                   <button onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white sm:block">Гарах</button>
                 </>
               ) : (
-                <button onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-4 text-xs font-bold">
+                <button onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold sm:px-4">
                   <Icon name="user" className="h-4 w-4" />
-                  Нэвтрэх
+                  <span className="hidden sm:inline">Нэвтрэх</span>
                 </button>
               )}
             </div>
@@ -252,6 +258,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             </a>
           ))}
         </nav>
+        {joinOpen && <JoinModal onClose={() => setJoinOpen(false)} />}
         {authOpen && (
           <AuthModal
             onClose={() => {

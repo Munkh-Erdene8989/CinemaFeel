@@ -9,7 +9,7 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ i
   const { id } = await context.params;
   const ref = adminDb().collection("admins").doc(id);
   const snap = await ref.get();
-  if (!snap.exists) return jsonError("Админ олдсонгүй.", 404);
+  if (!snap.exists) return jsonError("Контент бүтээгч олдсонгүй.", 404);
   const body = (await request.json().catch(() => ({}))) as { name?: string; active?: boolean; password?: string };
   const patch: Record<string, unknown> = {};
   if (typeof body.name === "string" && body.name.trim().length >= 2) patch.name = body.name.trim();
