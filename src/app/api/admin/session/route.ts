@@ -14,5 +14,8 @@ export async function GET(request: NextRequest) {
     inviteCode = await uniqueInviteCode();
     await ref.set({ inviteCode }, { merge: true });
   }
-  return NextResponse.json({ ...session, inviteCode });
+  const data = snap.data();
+  const termsSeen = Number(data?.creatorTermsSeenAt ?? 0) > 0;
+  const guideSeen = Number(data?.creatorGuideSeenAt ?? 0) > 0;
+  return NextResponse.json({ ...session, inviteCode, termsSeen, guideSeen });
 }

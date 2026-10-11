@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Episode, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
-import { defaultSettings } from "@/lib/types";
+import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
+import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
+import { CreatorTermsModal } from "./creator-terms-modal";
 import { AdminField, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -68,6 +70,15 @@ export function AdminApp() {
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [inviteCode, setInviteCode] = useState("");
   const [notice, setNotice] = useState("");
+  const termsAccepted = useRef(false);
+  const guideDone = useRef(false);
+  const [termsOpen, setTermsOpen] = useState(false);
+  const [termsBusy, setTermsBusy] = useState(false);
+  const [termsError, setTermsError] = useState("");
+  const [guideOpen, setGuideOpen] = useState(false);
+  const [guideStep, setGuideStep] = useState(0);
+  const [guideBusy, setGuideBusy] = useState(false);
+  const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
     ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
@@ -79,7 +90,7 @@ export function AdminApp() {
   };
 
   const reload = async () => {
-    const sessionData = await adminFetch<AdminSession & { inviteCode?: string }>("/api/admin/session");
+    const sessionData = await adminFetch<AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean }>("/api/admin/session");
     const [seriesData, revenueData, settingsData] = await Promise.all([
       adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
       adminFetch<RevenueReport>("/api/admin/revenue"),
@@ -87,6 +98,9 @@ export function AdminApp() {
     ]);
     setSession(sessionData);
     setInviteCode(sessionData.inviteCode || "");
+    const creator = sessionData.role === "admin";
+    if (!termsAccepted.current) setTermsOpen(creator && sessionData.termsSeen !== true);
+    if (!guideDone.current && creator && sessionData.termsSeen === true && sessionData.guideSeen !== true) setGuideOpen(true);
     setContent(seriesData.series);
     setRevenue(revenueData);
     setSettings(settingsData.settings);
@@ -101,9 +115,52 @@ export function AdminApp() {
     setStaff(staffData.admins);
   };
 
+  const acceptTerms = async () => {
+    setTermsBusy(true);
+    setTermsError("");
+    try {
+      await adminFetch("/api/admin/terms", { method: "POST" });
+      termsAccepted.current = true;
+      setTermsOpen(false);
+      if (!guideDone.current) {
+        setGuideStep(0);
+        setSection("Хяналтын самбар");
+        setGuideOpen(true);
+      }
+    } catch (error) {
+      setTermsError(error instanceof Error ? error.message : "Нөхцөлийг хадгалж чадсангүй.");
+    } finally {
+      setTermsBusy(false);
+    }
+  };
+
+  const showGuideStep = (index: number) => {
+    const next = creatorGuideSteps[index];
+    if (!next) return;
+    setGuideStep(index);
+    setSection(next.section);
+  };
+
+  const finishGuide = async () => {
+    setGuideBusy(true);
+    setGuideError("");
+    try {
+      await adminFetch("/api/admin/guide", { method: "POST" });
+      guideDone.current = true;
+      setGuideOpen(false);
+      setSection("Хяналтын самбар");
+    } catch (error) {
+      setGuideError(error instanceof Error ? error.message : "Зааврыг хадгалж чадсангүй.");
+    } finally {
+      setGuideBusy(false);
+    }
+  };
+
   useEffect(() => {
     reload().catch((error: Error) => notify(error.message));
   }, []);
+
+  const guiding = guideOpen && !termsOpen;
 
   return (
     <div className="min-h-screen bg-[#0c0c0f] text-white">
@@ -112,7 +169,7 @@ export function AdminApp() {
         <p className="mt-9 px-3 text-[10px] font-black uppercase tracking-[.2em] text-zinc-600">Удирдлага</p>
         <nav className="mt-3 space-y-1">
           {menu.map(([label, icon]) => (
-            <button key={label} onClick={() => setSection(label)} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"}`}>
+            <button key={label} onClick={() => (guiding ? showGuideStep(creatorGuideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guiding && creatorGuideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>
               <Icon name={icon} className="h-4 w-4" />
               {label}
             </button>
@@ -135,10 +192,10 @@ export function AdminApp() {
             <span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff3d56] text-xs font-black">{(superAdmin ? "S" : session?.name || "A").slice(0, 1).toUpperCase()}</span>
           </div>
         </header>
-        <div className="p-5 md:p-8">
+        <div className={`p-5 md:p-8 ${guiding ? "pb-96" : ""}`}>
           <div className="scrollbar-none mb-6 flex gap-2 overflow-x-auto lg:hidden">
             {menu.map(([label]) => (
-              <button key={label} onClick={() => setSection(label)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"}`}>{label}</button>
+              <button key={label} onClick={() => (guiding ? showGuideStep(creatorGuideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && creatorGuideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
             ))}
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
@@ -151,6 +208,8 @@ export function AdminApp() {
           {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} reload={reload} notify={notify} />}
         </div>
       </main>
+      {termsOpen && <CreatorTermsModal busy={termsBusy} error={termsError} onAccept={acceptTerms} />}
+      {guiding && <CreatorGuide step={guideStep} busy={guideBusy} error={guideError} onStep={showGuideStep} onDone={finishGuide} />}
       {notice && (
         <div className="fixed bottom-6 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-5 py-3 text-xs font-extrabold text-black shadow-2xl">
           <Icon name="check" className="h-4 w-4 text-emerald-600" />
@@ -984,7 +1043,7 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
   return (
     <div>
       <h2 className="text-2xl font-black">Контент бүтээгчид</h2>
-      <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн 10,000₮ төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Бүтээгч зөвхөн өөрийн контент болон орлогоо харна.</p>
+      <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн {formatMoney(CREATOR_FEE)} төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Бүтээгч зөвхөн өөрийн контент болон орлогоо харна.</p>
       <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Нэр" className="admin-input" />
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Нэвтрэх нэр" className="admin-input" autoCapitalize="none" />
@@ -1013,7 +1072,7 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
                 <td className="px-5 text-zinc-400">{admin.username}</td>
                 <td className="px-5 font-bold tracking-wider text-zinc-300">{admin.inviteCode || "—"}</td>
                 <td className="px-5 text-zinc-500">{admin.phone ? formatPhone(admin.phone) : "—"}{admin.email && <small className="block text-zinc-600">{admin.email}</small>}</td>
-                <td className={`px-5 font-bold ${admin.source === "self" && !admin.paid ? "text-amber-400" : "text-zinc-400"}`}>{admin.source === "self" ? (admin.paid ? "10,000₮" : "Хүлээгдэж буй") : "Гараар"}</td>
+                <td className={`px-5 font-bold ${admin.source === "self" && !admin.paid ? "text-amber-400" : "text-zinc-400"}`}>{admin.source === "self" ? (admin.paid ? formatMoney(CREATOR_FEE) : "Хүлээгдэж буй") : "Гараар"}</td>
                 <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
                 <td className="px-5">
                   <button onClick={() => patch(admin.id, { active: !admin.active })} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
