@@ -56,6 +56,7 @@ export type SeriesWithEpisodes = Series & { episodeList: Episode[] };
 export type AppUser = {
   uid: string;
   email: string;
+  phone?: string;
   plan: Plan;
   status: UserStatus;
   joined: string;
@@ -107,7 +108,10 @@ export type Settings = {
   maintenance: boolean;
   registration: boolean;
   notifications: boolean;
+  genres: string[];
 };
+
+export const defaultGenres = ["Романтик", "Драма", "Өшөө авалт", "Уран зөгнөлт"];
 
 export const defaultSettings: Settings = {
   name: "CinemaFeel",
@@ -116,7 +120,30 @@ export const defaultSettings: Settings = {
   maintenance: false,
   registration: true,
   notifications: true,
+  genres: defaultGenres,
 };
+
+export function normalizeGenres(value: unknown) {
+  const source = Array.isArray(value) ? value : defaultGenres;
+  const genres: string[] = [];
+  const seen = new Set<string>();
+  for (const item of source) {
+    const name = String(item ?? "").trim().replace(/\s+/g, " ");
+    const key = name.toLocaleLowerCase("mn");
+    if (!name || name.length > 40 || key === "бүгд" || seen.has(key)) continue;
+    seen.add(key);
+    genres.push(name);
+  }
+  return genres.length ? genres : [...defaultGenres];
+}
+
+export function mergeSettings(data?: Partial<Settings> | null): Settings {
+  return {
+    ...defaultSettings,
+    ...data,
+    genres: normalizeGenres(data?.genres),
+  };
+}
 
 export type RevenueRow = {
   seriesId: string;
@@ -149,5 +176,4 @@ export type RevenueReport = {
   admins: AdminRevenue[];
 };
 
-export const genres = ["Романтик", "Драма", "Өшөө авалт", "Уран зөгнөлт"] as const;
 export const SUPER_ADMIN_ID = "super";

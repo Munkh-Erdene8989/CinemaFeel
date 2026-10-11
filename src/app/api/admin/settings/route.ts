@@ -1,18 +1,20 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, requireSuper } from "@/lib/http";
-import { defaultSettings, type Settings } from "@/lib/types";
+import { defaultSettings, mergeSettings, normalizeGenres, type Settings } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   if (!(await assertAdmin(request))) return jsonError("Нэвтрэх шаардлагатай.", 401);
   const snap = await adminDb().collection("settings").doc("app").get();
-  return NextResponse.json({ settings: { ...defaultSettings, ...(snap.data() as Settings | undefined) } });
+  return NextResponse.json({ settings: mergeSettings(snap.data() as Partial<Settings> | undefined) });
 }
 
 export async function PUT(request: NextRequest) {
   const gate = await requireSuper(request);
   if (gate.error) return gate.error;
   const body = (await request.json().catch(() => ({}))) as Partial<Settings>;
+  const existing = await adminDb().collection("settings").doc("app").get();
+  const current = mergeSettings(existing.data() as Partial<Settings> | undefined);
   const settings: Settings = {
     name: String(body.name || defaultSettings.name),
     email: String(body.email || defaultSettings.email),
@@ -20,6 +22,7 @@ export async function PUT(request: NextRequest) {
     maintenance: Boolean(body.maintenance),
     registration: Boolean(body.registration),
     notifications: Boolean(body.notifications),
+    genres: normalizeGenres(body.genres ?? current.genres),
   };
   await adminDb().collection("settings").doc("app").set(settings);
   return NextResponse.json({ settings });

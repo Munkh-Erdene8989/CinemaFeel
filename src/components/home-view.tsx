@@ -13,8 +13,9 @@ const photos = {
 export function HomeView() {
   const { series, owned, subscribed, openFilm, beginCheckout, settings } = useSite();
   const [category, setCategory] = useState("Бүгд");
-  const categories = ["Бүгд", "Романтик", "Драма", "Өшөө авалт", "Уран зөгнөлт"];
-  const visible = category === "Бүгд" ? series : series.filter((film) => film.genre === category);
+  const categories = ["Бүгд", ...settings.genres];
+  const active = categories.includes(category) ? category : "Бүгд";
+  const visible = active === "Бүгд" ? series : series.filter((film) => film.genre === active);
   const featured = series.find((film) => film.featured) ?? series[0];
   const monthly = Number(settings.price || 14900);
 
@@ -76,7 +77,7 @@ export function HomeView() {
         </div>
         <div className="scrollbar-none mt-7 flex gap-2 overflow-x-auto pb-2">
           {categories.map((item) => (
-            <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${category === item ? "bg-white text-black" : "border border-white/10 text-zinc-500"}`}>
+            <button key={item} onClick={() => setCategory(item)} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${active === item ? "bg-white text-black" : "border border-white/10 text-zinc-500"}`}>
               {item}
             </button>
           ))}

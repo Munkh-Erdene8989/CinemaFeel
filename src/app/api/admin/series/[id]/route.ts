@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
+import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 type Context = { params: Promise<{ id: string }> };
@@ -21,6 +22,10 @@ export async function PATCH(request: NextRequest, context: Context) {
   }
 
   const payload = seriesPayload({ ...current.data(), ...body }, Number(current.data()?.createdAt ?? Date.now()));
+  const previous = String(current.data()?.genre ?? "");
+  const genre = canonicalGenre(payload.genre, await loadGenres());
+  if (!genre && !sameGenre(payload.genre, previous)) return jsonError("Энэ төрөл бүртгэлгүй. Эхлээд төрөл нэмнэ үү.");
+  payload.genre = genre || previous;
   if (typeof body.posterPath === "string" && body.posterPath) {
     payload.image = await posterUrl(body.posterPath);
   }

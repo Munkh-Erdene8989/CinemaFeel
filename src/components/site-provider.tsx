@@ -5,9 +5,9 @@ import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
-import { defaultSettings } from "@/lib/types";
+import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
-import { subscriptionActive } from "@/lib/format";
+import { accountInitial, subscriptionActive } from "@/lib/format";
 import { AuthModal } from "./auth-modal";
 import { CheckoutModal } from "./checkout-modal";
 import { FilmModal } from "./film-modal";
@@ -117,7 +117,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       setReady(true);
     });
     const stopSettings = onSnapshot(doc(db, "settings", "app"), (snap) => {
-      if (snap.exists()) setSettings({ ...defaultSettings, ...(snap.data() as Settings) });
+      if (snap.exists()) setSettings(mergeSettings(snap.data() as Settings));
     });
     return () => {
       stopAuth();
@@ -213,7 +213,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             <div className="ml-auto flex items-center gap-2">
               {user ? (
                 <>
-                  <a href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{(profile?.email || user.email || "C")[0]?.toUpperCase()}</a>
+                  <a href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
                   <button onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white sm:block">Гарах</button>
                 </>
               ) : (

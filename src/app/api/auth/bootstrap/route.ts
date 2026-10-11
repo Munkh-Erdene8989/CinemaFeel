@@ -6,8 +6,9 @@ import { jsonError, readUser } from "@/lib/http";
 export async function POST(request: NextRequest) {
   const decoded = await readUser(request);
   if (!decoded?.uid) return jsonError("Нэвтрэх шаардлагатай.", 401);
-  const email = decoded.email?.toLowerCase();
-  if (!email) return jsonError("Email олдсонгүй.", 400);
+  const email = decoded.email?.toLowerCase() || "";
+  const phone = decoded.phone_number || "";
+  if (!email && !phone) return jsonError("Бүртгэлийн мэдээлэл олдсонгүй.", 400);
 
   const settings = await adminDb().collection("settings").doc("app").get();
   const registrationOpen = settings.exists ? settings.data()?.registration !== false : true;
@@ -19,6 +20,7 @@ export async function POST(request: NextRequest) {
   if (!snap.exists) {
     await ref.set({
       email,
+      phone,
       plan: "Үндсэн",
       status: "Идэвхтэй",
       joined: todayStamp(),
@@ -27,8 +29,13 @@ export async function POST(request: NextRequest) {
       photoURL: decoded.picture || "",
       createdAt: Date.now(),
     });
-  } else if (snap.data()?.email !== email) {
-    await ref.set({ email, displayName: decoded.name || snap.data()?.displayName || "", photoURL: decoded.picture || snap.data()?.photoURL || "" }, { merge: true });
+  } else {
+    const patch: Record<string, string> = {};
+    if (email && snap.data()?.email !== email) patch.email = email;
+    if (phone && snap.data()?.phone !== phone) patch.phone = phone;
+    if (decoded.name && snap.data()?.displayName !== decoded.name) patch.displayName = decoded.name;
+    if (decoded.picture && snap.data()?.photoURL !== decoded.picture) patch.photoURL = decoded.picture;
+    if (Object.keys(patch).length) await ref.set(patch, { merge: true });
   }
   return NextResponse.json({ ok: true });
 }

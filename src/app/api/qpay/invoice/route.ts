@@ -8,7 +8,8 @@ import { defaultSettings } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
-  if (!user?.uid || !user.email) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  if (!user?.uid) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const contact = user.email || user.phone_number || "";
   const profile = await adminDb().collection("users").doc(user.uid).get();
   if (profile.data()?.status === "Түр зогссон") return jsonError("Таны бүртгэл түр зогссон байна.", 403);
 
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
 
   await adminDb().collection("payments").doc(senderInvoiceNo).set({
     uid: user.uid,
-    email: user.email,
+    email: contact,
     amount,
     product,
     mode,

@@ -2,8 +2,8 @@
 
 import { useEffect, useState } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Episode, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
-import { defaultSettings, genres } from "@/lib/types";
-import { formatDate, formatMoney, formatViews } from "@/lib/format";
+import { defaultSettings } from "@/lib/types";
+import { formatDate, formatMoney, formatPhone, formatViews } from "@/lib/format";
 import { AdminField, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -141,7 +141,7 @@ export function AdminApp() {
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
           {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} />}
-          {section === "Контент" && <ContentAdmin content={content} showOwner={superAdmin} reload={reload} notify={notify} />}
+          {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} reload={reload} notify={notify} />}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} />}
           {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} reload={reload} notify={notify} />}
           {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
@@ -269,10 +269,33 @@ function AdminHome({ content, mine }: { content: SeriesWithEpisodes[]; mine?: Ad
   );
 }
 
-function ContentAdmin({ content, showOwner, reload, notify }: { content: SeriesWithEpisodes[]; showOwner: boolean; reload: () => Promise<void>; notify: (message: string) => void }) {
+function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, notify }: { content: SeriesWithEpisodes[]; genres: string[]; showOwner: boolean; canManageGenres: boolean; reload: () => Promise<void>; notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
   const [editing, setEditing] = useState<SeriesWithEpisodes | "new" | null>(null);
+  const [genreName, setGenreName] = useState("");
+  const [genreError, setGenreError] = useState("");
+  const addGenre = async () => {
+    setGenreError("");
+    try {
+      const saved = await adminFetch<{ name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: genreName }) });
+      setGenreName("");
+      await reload();
+      notify(saved.created ? "Төрөл нэмэгдлээ." : "Энэ төрөл аль хэдийн байна.");
+    } catch (cause) {
+      setGenreError(cause instanceof Error ? cause.message : "Төрөл нэмэгдсэнгүй.");
+    }
+  };
+  const removeGenre = async (name: string) => {
+    setGenreError("");
+    try {
+      await adminFetch("/api/admin/genres", { method: "DELETE", body: JSON.stringify({ name }) });
+      await reload();
+      notify("Төрөл хасагдлаа.");
+    } catch (cause) {
+      setGenreError(cause instanceof Error ? cause.message : "Төрөл хасагдсангүй.");
+    }
+  };
   const visible = content.filter((film) => film.title.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || film.status === filter));
   const toggleStatus = async (film: SeriesWithEpisodes) => {
     await adminFetch(`/api/admin/series/${film.id}`, {
@@ -294,6 +317,24 @@ function ContentAdmin({ content, showOwner, reload, notify }: { content: SeriesW
           Шинэ контент
         </button>
       </div>
+      {canManageGenres && (
+        <div className="mt-6 rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+          <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-500">Контентийн төрөл</p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            {genres.map((genre) => (
+              <span key={genre} className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold">
+                {genre}
+                <button type="button" onClick={() => removeGenre(genre)} className="text-zinc-500 hover:text-red-400" aria-label={`${genre} төрлийг хасах`}>×</button>
+              </span>
+            ))}
+          </div>
+          <div className="mt-4 flex flex-col gap-2 sm:flex-row">
+            <input value={genreName} onChange={(e) => setGenreName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && genreName.trim() && addGenre()} placeholder="Шинэ төрөл, жишээ нь Адал явдал" className="admin-input sm:max-w-xs" />
+            <button disabled={!genreName.trim()} onClick={addGenre} className="h-12 rounded-xl bg-white px-4 text-xs font-extrabold text-black disabled:opacity-40">Төрөл нэмэх</button>
+          </div>
+          {genreError && <p className="mt-3 text-xs text-red-400">{genreError}</p>}
+        </div>
+      )}
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <label className="flex h-11 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-[#141419] px-4">
           <Icon name="search" className="h-4 w-4 text-zinc-600" />
@@ -354,6 +395,12 @@ function ContentAdmin({ content, showOwner, reload, notify }: { content: SeriesW
       {editing && (
         <ContentEditor
           film={editing === "new" ? null : editing}
+          genres={genres}
+          canAddGenre={canManageGenres}
+          onGenreAdded={async (name) => {
+            await reload();
+            notify(`${name} төрөл нэмэгдлээ.`);
+          }}
           onClose={() => setEditing(null)}
           onSaved={async (message) => {
             setEditing(null);
@@ -366,10 +413,10 @@ function ContentAdmin({ content, showOwner, reload, notify }: { content: SeriesW
   );
 }
 
-function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | null; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
+function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSaved }: { film: SeriesWithEpisodes | null; genres: string[]; canAddGenre: boolean; onGenreAdded: (name: string) => Promise<void>; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
   const [form, setForm] = useState({
     title: film?.title ?? "",
-    genre: film?.genre ?? "Романтик",
+    genre: film?.genre ?? genres[0] ?? defaultSettings.genres[0],
     description: film?.description ?? "",
     price: film?.price ?? 0,
     image: film?.image ?? "",
@@ -383,8 +430,10 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
   const [seriesId, setSeriesId] = useState(film?.id ?? "");
   const [shareCode, setShareCode] = useState(film?.shareCode ?? "");
   const [copied, setCopied] = useState(false);
+  const [newGenre, setNewGenre] = useState("");
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
+  const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
   const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
 
   const saveMeta = async () => {
@@ -480,7 +529,34 @@ function ContentEditor({ film, onClose, onSaved }: { film: SeriesWithEpisodes | 
         <div className="mt-7 grid gap-5 sm:grid-cols-2">
           <AdminField label="Нэр"><input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Киноны нэр" className="admin-input" /></AdminField>
           <AdminField label="Төрөл">
-            <select value={form.genre} onChange={(e) => update("genre", e.target.value)} className="admin-input">{genres.map((genre) => <option key={genre}>{genre}</option>)}</select>
+            <select value={form.genre} onChange={(e) => update("genre", e.target.value)} className="admin-input">{genreOptions.map((genre) => <option key={genre}>{genre}</option>)}</select>
+            {canAddGenre && (
+              <div className="mt-2 flex gap-2">
+                <input value={newGenre} onChange={(e) => setNewGenre(e.target.value)} placeholder="Шинэ төрөл" className="admin-input" />
+                <button
+                  type="button"
+                  disabled={!newGenre.trim() || Boolean(busy)}
+                  onClick={async () => {
+                    setError("");
+                    setBusy("Төрөл нэмж байна...");
+                    try {
+                      const saved = await adminFetch<{ name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: newGenre }) });
+                      update("genre", saved.name);
+                      setNewGenre("");
+                      setBusy("");
+                      if (saved.created) await onGenreAdded(saved.name);
+                      else setError("Энэ төрөл аль хэдийн байна.");
+                    } catch (cause) {
+                      setBusy("");
+                      setError(cause instanceof Error ? cause.message : "Төрөл нэмэгдсэнгүй.");
+                    }
+                  }}
+                  className="h-12 shrink-0 rounded-xl border border-white/10 px-3 text-xs font-bold text-zinc-300 disabled:opacity-40"
+                >
+                  Нэмэх
+                </button>
+              </div>
+            )}
           </AdminField>
           <AdminField label="Үнэ (0 = үнэгүй)"><input value={form.price} onChange={(e) => update("price", Number(e.target.value))} type="number" min="0" className="admin-input" /></AdminField>
           <AdminField label="Он"><input value={form.year} onChange={(e) => update("year", Number(e.target.value))} type="number" className="admin-input" /></AdminField>
@@ -578,7 +654,7 @@ function UsersAdmin({ users, reload, notify }: { users: AppUser[]; reload: () =>
   const [filter, setFilter] = useState("Бүгд");
   const [adding, setAdding] = useState(false);
   const [email, setEmail] = useState("");
-  const visible = users.filter((user) => user.email.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter));
+  const visible = users.filter((user) => `${user.email || ""} ${user.phone || ""}`.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter));
   const updateUser = async (uid: string, patch: Partial<AppUser>) => {
     await adminFetch(`/api/admin/users/${uid}`, { method: "PATCH", body: JSON.stringify(patch) });
     await reload();
@@ -596,17 +672,17 @@ function UsersAdmin({ users, reload, notify }: { users: AppUser[]; reload: () =>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <label className="flex h-11 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-[#141419] px-4">
           <Icon name="search" className="h-4 w-4 text-zinc-600" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Email-ээр хайх..." className="w-full bg-transparent text-sm outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Email эсвэл утас..." className="w-full bg-transparent text-sm outline-none" />
         </label>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#141419] px-4 text-xs font-bold"><option>Бүгд</option><option>Plus</option><option>Үндсэн</option></select>
       </div>
       <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[760px] text-left text-xs">
-          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["EMAIL", "ЭРХ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
+          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ЭРХ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
           <tbody>
             {visible.map((user) => (
               <tr key={user.uid} className="border-b border-white/[.05] last:border-0">
-                <td className="px-5 py-5 font-bold">{user.email}</td>
+                <td className="px-5 py-5 font-bold">{user.email || (user.phone ? formatPhone(user.phone) : "—")}</td>
                 <td className="px-5">
                   <select value={user.plan} onChange={(e) => updateUser(user.uid, { plan: e.target.value as AppUser["plan"] })} className="rounded-lg bg-white/[.05] px-2 py-1 outline-none"><option>Үндсэн</option><option>Plus</option></select>
                 </td>
@@ -705,7 +781,7 @@ function SettingsAdmin({ settings, reload, notify }: { settings: Settings; reloa
         <AdminField label="Сарын эрхийн үнэ"><input value={draft.price} onChange={(e) => update("price", e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="admin-input" /></AdminField>
         <div className="border-t border-white/[.07] pt-5">
           {([
-            ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google эсвэл email-ээр шинээр бүртгүүлж болно."],
+            ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google, email эсвэл утасны дугаараар шинээр бүртгүүлж болно."],
             ["notifications", "Email мэдэгдэл", "Шинэ анги болон төлбөрийн мэдээлэл илгээхэд бэлэн."],
             ["maintenance", "Засварын горим", "Хэрэглэгчдэд түр хаалттай хуудас харуулна."],
           ] as const).map(([key, label, help]) => (

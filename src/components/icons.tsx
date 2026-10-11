@@ -9,6 +9,8 @@ const paths: Record<string, string> = {
   arrow: "m9 18 6-6-6-6",
   card: "M3 7h18v11H3V7Zm0 4h18M7 15h3",
   mail: "M3 6h18v12H3V6Zm1 1 8 6 8-6",
+  phone: "M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm4 15h.01",
+  copy: "M8 8h11v11H8V8ZM5 15V5h10",
   lock: "M6 10h12v10H6V10Zm3 0V7a3 3 0 0 1 6 0v3",
   film: "M4 4h16v16H4V4Zm0 5h16M8 4v5m8-5v5",
   chart: "M4 20V10m6 10V4m6 16v-7m4 7H2",

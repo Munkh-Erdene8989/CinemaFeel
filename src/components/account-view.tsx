@@ -1,6 +1,6 @@
 "use client";
 
-import { formatDate, formatMoney } from "@/lib/format";
+import { accountIdentity, accountInitial, formatDate, formatMoney } from "@/lib/format";
 import { useSite } from "./site-provider";
 
 export function AccountView() {
@@ -15,14 +15,14 @@ export function AccountView() {
       </section>
     );
   }
-  const email = profile?.email || user.email || "";
+  const identity = accountIdentity(profile?.email || user.email, profile?.phone || user.phoneNumber);
   return (
     <section className="mx-auto min-h-screen max-w-5xl px-5 pb-24 pt-32 md:px-10">
       <div className="flex items-center gap-5">
-        <span className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-black text-black">{email[0]?.toUpperCase()}</span>
+        <span className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</span>
         <div>
           <h1 className="text-2xl font-black">Миний бүртгэл</h1>
-          <p className="mt-1 text-sm text-zinc-500">{email}</p>
+          <p className="mt-1 text-sm text-zinc-500">{identity || "CinemaFeel"}</p>
         </div>
       </div>
       <div className="mt-10 grid gap-5 md:grid-cols-3">

@@ -25,3 +25,22 @@ export function formatViews(views: number) {
 export function todayStamp() {
   return formatDate(Date.now());
 }
+
+export function formatPhone(value: string) {
+  const digits = value.replace(/\D/g, "");
+  const local = digits.startsWith("976") && digits.length >= 11 ? digits.slice(-8) : digits;
+  if (local.length === 8) return `${local.slice(0, 4)} ${local.slice(4)}`;
+  return value;
+}
+
+export function accountIdentity(email?: string | null, phone?: string | null) {
+  if (email) return email;
+  if (phone) return formatPhone(phone);
+  return "";
+}
+
+export function accountInitial(email?: string | null, phone?: string | null) {
+  if (email) return email[0]?.toUpperCase() || "C";
+  const digits = (phone || "").replace(/\D/g, "");
+  return digits.slice(-1) || "C";
+}

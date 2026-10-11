@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { listSeries, newId, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
+import { canonicalGenre, loadGenres } from "@/lib/genres";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 export async function GET(request: NextRequest) {
@@ -17,6 +18,9 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const payload = seriesPayload(body);
   if (!payload.title) return jsonError("Киноны нэр оруулна уу.");
+  const genre = canonicalGenre(payload.genre, await loadGenres());
+  if (!genre) return jsonError("Энэ төрөл бүртгэлгүй. Эхлээд төрөл нэмнэ үү.");
+  payload.genre = genre;
   const id = newId();
   const shareCode = await uniqueShareCode();
   await adminDb().collection("series").doc(id).set({
