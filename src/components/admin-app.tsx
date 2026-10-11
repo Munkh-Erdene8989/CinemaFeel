@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Episode, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { defaultSettings } from "@/lib/types";
-import { formatDate, formatMoney, formatPhone, formatViews } from "@/lib/format";
+import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { AdminField, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -159,6 +159,16 @@ export function AdminApp() {
   );
 }
 
+function userLabel(user: AppUser) {
+  return user.email || (user.phone ? formatPhone(user.phone) : user.displayName || "—");
+}
+
+function remainingTone(days: number) {
+  if (days <= 0) return "text-zinc-500";
+  if (days <= 3) return "text-amber-400";
+  return "text-emerald-400";
+}
+
 function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[] }) {
   const [range, setRange] = useState("7");
   const days = Number(range);
@@ -171,9 +181,20 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
     return recent.filter((payment) => payment.createdAt >= start && payment.createdAt < end).reduce((sum, payment) => sum + payment.amount, 0);
   });
   const max = Math.max(...buckets, 1);
+  const monthly = users
+    .filter((user) => user.plan === "Plus")
+    .slice()
+    .sort((a, b) => {
+      const aLeft = daysRemaining(a.subscriptionExpiresAt);
+      const bLeft = daysRemaining(b.subscriptionExpiresAt);
+      if ((aLeft > 0) !== (bLeft > 0)) return aLeft > 0 ? -1 : 1;
+      if (aLeft > 0) return aLeft - bLeft;
+      return (b.subscriptionExpiresAt ?? 0) - (a.subscriptionExpiresAt ?? 0);
+    });
+  const activeMonthly = users.filter((user) => subscriptionActive(user)).length;
   const stats = [
     ["Нийт орлого", `₮${Math.round(revenue).toLocaleString("mn-MN")}`, `${recent.length} гүйлгээ`, "chart"],
-    ["Идэвхтэй эрх", users.filter((user) => user.plan === "Plus" && user.status === "Идэвхтэй").length.toString(), `${users.length} хэрэглэгч`, "users"],
+    ["Идэвхтэй эрх", activeMonthly.toString(), `${users.length} хэрэглэгч`, "users"],
     ["Нийт үзэлт", formatViews(content.reduce((sum, film) => sum + film.views, 0)), "бодит тоолуур", "play"],
     ["Контент", content.length.toString(), `${content.filter((film) => film.status === "Нийтлэгдсэн").length} нийтлэгдсэн`, "film"],
   ];
@@ -236,6 +257,30 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
             ))}
             {!content.length && <p className="text-sm text-zinc-600">Контент алга.</p>}
           </div>
+        </div>
+      </div>
+      <div className="mt-5 rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+        <div className="flex items-center justify-between gap-4">
+          <div>
+            <h2 className="font-black">Сарын эрх</h2>
+            <p className="mt-1 text-xs text-zinc-600">Сарын эрх авсан хэрэглэгчийн үлдсэн хоног</p>
+          </div>
+          <span className="text-xs text-zinc-500">{activeMonthly} идэвхтэй</span>
+        </div>
+        <div className="mt-5 max-h-80 divide-y divide-white/[.05] overflow-y-auto">
+          {monthly.map((user) => {
+            const left = daysRemaining(user.subscriptionExpiresAt);
+            return (
+              <div key={user.uid} className="flex items-center gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">{userLabel(user)}</p>
+                  <p className="mt-1 text-[10px] text-zinc-600">{user.subscriptionExpiresAt ? `Дуусах: ${formatDate(user.subscriptionExpiresAt)}` : "Хугацаа тохируулаагүй"}</p>
+                </div>
+                <span className={`ml-auto shrink-0 text-xs font-bold ${remainingTone(left)}`}>{left > 0 ? `${left} хоног` : "Дууссан"}</span>
+              </div>
+            );
+          })}
+          {!monthly.length && <p className="text-sm text-zinc-600">Сарын эрхтэй хэрэглэгч алга.</p>}
         </div>
       </div>
     </>
@@ -677,20 +722,24 @@ function UsersAdmin({ users, reload, notify }: { users: AppUser[]; reload: () =>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#141419] px-4 text-xs font-bold"><option>Бүгд</option><option>Plus</option><option>Үндсэн</option></select>
       </div>
       <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-        <table className="w-full min-w-[760px] text-left text-xs">
-          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ЭРХ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
+        <table className="w-full min-w-[920px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ЭРХ", "ҮЛДСЭН ХОНОГ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
           <tbody>
-            {visible.map((user) => (
+            {visible.map((user) => {
+              const left = user.plan === "Plus" ? daysRemaining(user.subscriptionExpiresAt) : null;
+              return (
               <tr key={user.uid} className="border-b border-white/[.05] last:border-0">
                 <td className="px-5 py-5 font-bold">{user.email || (user.phone ? formatPhone(user.phone) : "—")}</td>
                 <td className="px-5">
                   <select value={user.plan} onChange={(e) => updateUser(user.uid, { plan: e.target.value as AppUser["plan"] })} className="rounded-lg bg-white/[.05] px-2 py-1 outline-none"><option>Үндсэн</option><option>Plus</option></select>
                 </td>
+                <td className={`px-5 font-bold ${left === null ? "text-zinc-600" : remainingTone(left)}`}>{left === null ? "—" : left > 0 ? `${left} хоног` : "Дууссан"}</td>
                 <td className="px-5 text-zinc-500">{user.joined}</td>
                 <td className={`px-5 font-bold ${user.status === "Идэвхтэй" ? "text-emerald-400" : "text-amber-400"}`}>{user.status}</td>
                 <td className="px-5"><button onClick={() => updateUser(user.uid, { status: user.status === "Идэвхтэй" ? "Түр зогссон" : "Идэвхтэй" })} className="text-zinc-500 hover:text-white">{user.status === "Идэвхтэй" ? "Түр зогсоох" : "Идэвхжүүлэх"}</button></td>
               </tr>
-            ))}
+              );
+            })}
           </tbody>
         </table>
       </div>

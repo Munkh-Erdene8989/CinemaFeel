@@ -1,9 +1,16 @@
 import type { AppUser } from "./types";
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 export function subscriptionActive(user: Pick<AppUser, "plan" | "status" | "subscriptionExpiresAt"> | null) {
   if (!user || user.status !== "Идэвхтэй") return false;
   if (user.plan !== "Plus") return false;
   return typeof user.subscriptionExpiresAt === "number" && user.subscriptionExpiresAt > Date.now();
+}
+
+export function daysRemaining(expiresAt: number | null | undefined, now = Date.now()) {
+  if (typeof expiresAt !== "number" || expiresAt <= now) return 0;
+  return Math.ceil((expiresAt - now) / DAY_MS);
 }
 
 export function formatMoney(amount: number) {
