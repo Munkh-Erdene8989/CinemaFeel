@@ -4,7 +4,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { todayStamp } from "@/lib/format";
 import { jsonError, readUser, siteOrigin } from "@/lib/http";
 import { createInvoice } from "@/lib/qpay";
-import { defaultSettings } from "@/lib/types";
+import { WEEKLY_PRICE, defaultSettings } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
@@ -19,9 +19,12 @@ export async function POST(request: NextRequest) {
   let amount = monthly;
   let product = "CinemaFeel Plus";
   let seriesId: string | null = null;
-  const mode = body.mode === "single" ? "single" : "subscription";
+  const mode = body.mode === "single" ? "single" : body.mode === "weekly" ? "weekly" : "subscription";
 
-  if (mode === "single") {
+  if (mode === "weekly") {
+    amount = WEEKLY_PRICE;
+    product = "CinemaFeel 7 хоног";
+  } else if (mode === "single") {
     if (!body.seriesId) return jsonError("Кино сонгоно уу.");
     const series = await adminDb().collection("series").doc(body.seriesId).get();
     if (!series.exists || series.data()?.status !== "Нийтлэгдсэн") return jsonError("Кино олдсонгүй.", 404);

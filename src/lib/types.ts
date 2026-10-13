@@ -3,7 +3,10 @@ export type SeriesStatus = "Нийтлэгдсэн" | "Ноорог";
 export type Plan = "Үндсэн" | "Plus";
 export type UserStatus = "Идэвхтэй" | "Түр зогссон";
 export type PaymentStatus = "Хүлээгдэж буй" | "Амжилттай" | "Буцаагдсан" | "Амжилтгүй";
-export type CheckoutMode = "single" | "subscription" | "creator";
+export type CheckoutMode = "single" | "weekly" | "subscription" | "creator";
+
+export const WEEKLY_PRICE = 5900;
+export const WEEKLY_DAYS = 7;
 
 export type AdminRole = "super" | "admin";
 

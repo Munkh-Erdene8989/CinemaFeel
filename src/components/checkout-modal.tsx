@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import type { CheckoutMode, QPayUrl, Series } from "@/lib/types";
+import { useEffect, useState } from "react";
+import { WEEKLY_PRICE, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon, Modal } from "./icons";
 import { clientAuth } from "@/lib/firebase";
@@ -12,17 +12,27 @@ export function CheckoutModal({
   monthlyPrice,
   onClose,
   onPaid,
+  onModeChange,
 }: {
   mode: CheckoutMode;
   film: Series | null;
   monthlyPrice: number;
   onClose: () => void;
   onPaid: () => void;
+  onModeChange?: (mode: CheckoutMode) => void;
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [invoice, setInvoice] = useState<{ senderInvoiceNo: string; qrImage: string; urls: QPayUrl[] } | null>(null);
-  const total = mode === "single" ? film?.price ?? 0 : monthlyPrice;
+  const weekly = mode === "weekly";
+  const total = mode === "single" ? film?.price ?? 0 : weekly ? WEEKLY_PRICE : monthlyPrice;
+  const title = mode === "single" ? film?.title : weekly ? "CinemaFeel 7 хоногийн эрх" : "CinemaFeel сарын эрх";
+  const label = mode === "single" ? "Киноны эрх" : weekly ? "7 хоногийн эрх" : "30 хоногийн эрх";
+
+  useEffect(() => {
+    setInvoice(null);
+    setError("");
+  }, [mode]);
 
   const createInvoice = async () => {
     setLoading(true);
@@ -74,11 +84,35 @@ export function CheckoutModal({
     <Modal onClose={onClose}>
       <div className="p-7 sm:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ff536a]">Төлбөр баталгаажуулах</p>
-        <h2 className="mt-2 text-2xl font-black">{mode === "single" ? film?.title : "CinemaFeel сарын эрх"}</h2>
-        <div className="mt-6 rounded-2xl bg-white/[0.04] p-4">
+        <h2 className="mt-2 text-2xl font-black">{title}</h2>
+        {mode !== "single" && onModeChange && !invoice && (
+          <div className="mt-6 grid gap-3">
+            <button onClick={() => onModeChange("subscription")} className={`flex items-center justify-between rounded-2xl border px-4 py-3 text-left text-sm ${mode === "subscription" ? "border-white/30 bg-white/[0.06] text-white" : "border-white/10 text-zinc-300"}`}>
+              <span>Сарын эрх · 30 хоног</span>
+              <span className="font-black">{formatMoney(monthlyPrice)}</span>
+            </button>
+            <button onClick={() => onModeChange("weekly")} className={`offer-glow flex items-center justify-between rounded-2xl border px-4 py-4 text-left ${weekly ? "border-[#ff8a9a]/60 bg-[#ff3d56]/15" : "border-white/10 bg-white/[0.03]"}`}>
+              <span>
+                <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#ff8a9a]">Онцлох · 7 хоног</span>
+                <span className="mt-1 block text-sm font-bold text-white">Бүх киног үзэх</span>
+              </span>
+              <span className="text-2xl font-black">{formatMoney(WEEKLY_PRICE)}</span>
+            </button>
+          </div>
+        )}
+        {mode === "single" && onModeChange && !invoice && (
+          <button onClick={() => onModeChange("weekly")} className="offer-glow mt-6 flex w-full items-center justify-between rounded-2xl border border-[#ff8a9a]/50 bg-[#ff3d56]/15 px-4 py-4 text-left">
+            <span>
+              <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#ff8a9a]">Шинэ · 7 хоног</span>
+              <span className="mt-1 block text-sm font-bold">Бүх киног {formatMoney(WEEKLY_PRICE)}-өөр үзэх</span>
+            </span>
+            <span className="text-xl font-black">{formatMoney(WEEKLY_PRICE)}</span>
+          </button>
+        )}
+        <div className={`mt-6 rounded-2xl p-4 ${weekly ? "offer-glow border border-[#ff8a9a]/40 bg-[#ff3d56]/10" : "bg-white/[0.04]"}`}>
           <div className="flex justify-between text-sm text-zinc-400">
-            <span>{mode === "single" ? "Киноны эрх" : "30 хоногийн эрх"}</span>
-            <span>{formatMoney(total)}</span>
+            <span>{label}</span>
+            <span className={weekly ? "text-lg font-black text-white" : ""}>{formatMoney(total)}</span>
           </div>
           <div className="mt-4 flex justify-between border-t border-white/10 pt-4 font-black">
             <span>Нийт</span>

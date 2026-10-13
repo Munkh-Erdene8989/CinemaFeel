@@ -21,7 +21,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       return jsonError(message, 502);
     }
   }
-  if (payment.mode === "subscription") {
+  if (payment.mode === "subscription" || payment.mode === "weekly") {
     await adminDb().collection("users").doc(payment.uid).set({ plan: "Үндсэн", subscriptionExpiresAt: Date.now() }, { merge: true });
   } else if (payment.mode === "creator" && payment.creatorId) {
     await adminDb().collection("admins").doc(payment.creatorId).set({ active: false, paid: false }, { merge: true });

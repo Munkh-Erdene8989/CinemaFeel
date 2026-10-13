@@ -267,7 +267,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             }}
             onSuccess={() => {
               setAuthOpen(false);
-              if (pending === "single" || pending === "subscription") setCheckout(pending);
+              if (pending === "single" || pending === "weekly" || pending === "subscription") setCheckout(pending);
               if (pending === "watch" && selected) router.push(`/watch/${selected.id}/1`);
               if (!pending) notify("Амжилттай нэвтэрлээ.");
               setPending(null);
@@ -292,6 +292,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             mode={checkout}
             film={selected}
             monthlyPrice={monthlyPrice}
+            onModeChange={setCheckout}
             onClose={() => setCheckout(null)}
             onPaid={() => {
               setCheckout(null);

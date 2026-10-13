@@ -1,5 +1,5 @@
 import type { Firestore } from "firebase-admin/firestore";
-import type { AppUser, Payment, Series } from "./types";
+import { WEEKLY_DAYS, type AppUser, type Payment, type Series } from "./types";
 import { subscriptionActive, todayStamp } from "./format";
 
 export { subscriptionActive };
@@ -29,16 +29,17 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
     return { ok: true as const, already: false };
   }
 
-  if (payment.mode === "subscription") {
+  if (payment.mode === "subscription" || payment.mode === "weekly") {
     const userRef = db.collection("users").doc(payment.uid);
     const userSnap = await userRef.get();
     const current = Number(userSnap.data()?.subscriptionExpiresAt ?? 0);
     const base = Math.max(Date.now(), current);
+    const days = payment.mode === "weekly" ? WEEKLY_DAYS : 30;
     await userRef.set(
       {
         plan: "Plus",
         status: "Идэвхтэй",
-        subscriptionExpiresAt: base + 30 * 24 * 60 * 60 * 1000,
+        subscriptionExpiresAt: base + days * 24 * 60 * 60 * 1000,
       },
       { merge: true },
     );

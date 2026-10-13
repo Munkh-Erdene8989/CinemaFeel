@@ -3,7 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
-import type { Episode, Series } from "@/lib/types";
+import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
+import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { Icon } from "./icons";
 import { useSite } from "./site-provider";
@@ -146,8 +147,9 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
                   )}
                   {needsPay && film && (
                     <div className="mt-4 grid gap-2">
-                      <button onClick={() => beginCheckout("single", film)} className="h-11 rounded-full bg-white px-5 text-xs font-extrabold text-black">Кино авах</button>
                       <button onClick={() => beginCheckout("subscription", film)} className="h-11 rounded-full border border-white/20 px-5 text-xs font-extrabold">Сарын эрх авах</button>
+                      <button onClick={() => beginCheckout("weekly", film)} className="offer-glow h-11 rounded-full bg-[#ff3d56] px-5 text-xs font-extrabold">7 хоног · {formatMoney(WEEKLY_PRICE)}</button>
+                      <button onClick={() => beginCheckout("single", film)} className="h-11 rounded-full bg-white px-5 text-xs font-extrabold text-black">Кино авах</button>
                     </div>
                   )}
                 </div>

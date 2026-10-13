@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { WEEKLY_PRICE } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { FilmCard } from "./film-card";
 import { Icon } from "./icons";
@@ -58,10 +59,10 @@ export function HomeView() {
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ff6679]">CinemaFeel Plus</p>
               <h2 className="mt-2 text-xl font-black md:text-2xl">Бүх premium киног хязгааргүй үз</h2>
-              <p className="mt-2 text-xs text-zinc-400">Сард {formatMoney(monthly)} · 30 хоног · Шинэ анги нэмэгдэнэ</p>
+              <p className="mt-2 text-xs text-zinc-400">7 хоног {formatMoney(WEEKLY_PRICE)} · Сард {formatMoney(monthly)} · Шинэ анги нэмэгдэнэ</p>
             </div>
-            <button onClick={() => beginCheckout("subscription", featured ?? null)} className="shrink-0 rounded-full bg-[#ff3d56] px-6 py-3 text-sm font-extrabold shadow-[0_10px_30px_rgba(255,61,86,.25)]">
-              Сарын эрх авах
+            <button onClick={() => beginCheckout("weekly", featured ?? null)} className="offer-glow shrink-0 rounded-full bg-[#ff3d56] px-6 py-3 text-sm font-extrabold">
+              7 хоног · {formatMoney(WEEKLY_PRICE)}
             </button>
           </div>
         </section>

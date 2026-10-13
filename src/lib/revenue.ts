@@ -39,7 +39,7 @@ export function buildRevenue(series: Series[], payments: Payment[], names: Map<s
   let subscriptionGross = 0;
   for (const payment of payments) {
     if (payment.status !== "Амжилттай") continue;
-    if (payment.mode === "subscription") subscriptionGross += Number(payment.amount) || 0;
+    if (payment.mode === "subscription" || payment.mode === "weekly") subscriptionGross += Number(payment.amount) || 0;
     else if (payment.seriesId) grossBySeries.set(payment.seriesId, (grossBySeries.get(payment.seriesId) ?? 0) + (Number(payment.amount) || 0));
   }
 

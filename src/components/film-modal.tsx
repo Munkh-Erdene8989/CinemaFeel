@@ -1,6 +1,6 @@
 "use client";
 
-import type { CheckoutMode, Series } from "@/lib/types";
+import { WEEKLY_PRICE, type CheckoutMode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon, Modal } from "./icons";
 
@@ -30,6 +30,16 @@ export function FilmModal({
         <div className="relative min-h-72 md:min-h-[520px]">
           <img src={film.image} alt={film.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-[#151519]" />
+          {!available && (
+            <button
+              onClick={() => onCheckout("weekly")}
+              className="offer-glow absolute left-1/2 top-1/2 z-10 w-[min(15.5rem,78%)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-[#ff8a9a]/50 bg-[#14080c]/75 px-6 py-5 text-center backdrop-blur-md"
+            >
+              <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[#ff8a9a]">Шинэ · 7 хоног</span>
+              <span className="mt-2 block text-4xl font-black tracking-tight text-white">{formatMoney(WEEKLY_PRICE)}</span>
+              <span className="mt-2 block text-xs font-bold text-zinc-200">Бүх киног үзэх</span>
+            </button>
+          )}
         </div>
         <div className="relative flex flex-col justify-center p-7 md:p-10">
           <div className="flex gap-2">
@@ -46,22 +56,27 @@ export function FilmModal({
               </button>
             ) : (
               <>
-                <button onClick={() => onCheckout("single")} className="flex h-12 w-full items-center justify-between rounded-xl bg-white px-5 text-sm font-extrabold text-black">
-                  <span>Энэ киног авах</span>
-                  <span>{formatMoney(film.price)}</span>
+                <button onClick={() => onCheckout("subscription")} className="flex h-12 w-full items-center justify-between rounded-xl border border-white/15 bg-white/[0.06] px-5 text-sm font-extrabold text-white">
+                  <span>Сарын эрх</span>
+                  <span>{formatMoney(monthlyPrice)}</span>
+                </button>
+                <button onClick={() => onCheckout("weekly")} className="offer-glow mt-3 flex h-14 w-full items-center justify-between rounded-xl border border-[#ff8a9a]/50 bg-[#ff3d56] px-5 text-sm font-extrabold text-white">
+                  <span>7 хоног · бүх кино</span>
+                  <span>{formatMoney(WEEKLY_PRICE)}</span>
                 </button>
                 <div className="my-4 flex items-center gap-3 text-[10px] font-bold text-zinc-600">
                   <span className="h-px flex-1 bg-white/10" />
                   ЭСВЭЛ
                   <span className="h-px flex-1 bg-white/10" />
                 </div>
-                <button onClick={() => onCheckout("subscription")} className="h-12 w-full rounded-xl border border-[#ff536a]/40 bg-[#ff3d56]/10 text-sm font-extrabold text-[#ff697c]">
-                  Бүх киног сарын {formatMoney(monthlyPrice)}-өөр үзэх
+                <button onClick={() => onCheckout("single")} className="flex h-12 w-full items-center justify-between rounded-xl bg-white px-5 text-sm font-extrabold text-black">
+                  <span>Энэ киног авах</span>
+                  <span>{formatMoney(film.price)}</span>
                 </button>
               </>
             )}
           </div>
-          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{available && signedIn ? "Таны эрх идэвхтэй байна." : available ? "Тоглуулах үед нэвтрэлт шалгана." : "Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног үргэлжилнэ."}</p>
+          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{available && signedIn ? "Таны эрх идэвхтэй байна." : available ? "Тоглуулах үед нэвтрэлт шалгана." : "7 хоногийн эрх бүх кинонд. Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног."}</p>
         </div>
       </div>
     </Modal>

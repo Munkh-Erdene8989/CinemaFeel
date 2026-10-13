@@ -1,5 +1,6 @@
 "use client";
 
+import { WEEKLY_PRICE } from "@/lib/types";
 import { accountIdentity, accountInitial, formatDate, formatMoney } from "@/lib/format";
 import { useSite } from "./site-provider";
 
@@ -31,7 +32,7 @@ export function AccountView() {
           <p className={`mt-3 text-xl font-black ${subscribed ? "text-emerald-400" : "text-white"}`}>{profile?.status === "Түр зогссон" ? "Түр зогссон" : subscribed ? "Plus идэвхтэй" : "Үндсэн эрх"}</p>
           <p className="mt-2 text-xs leading-5 text-zinc-600">{subscribed && profile?.subscriptionExpiresAt ? `Дуусах: ${formatDate(profile.subscriptionExpiresAt)}` : "Зөвхөн үнэгүй болон авсан кино"}</p>
           {!subscribed && profile?.status !== "Түр зогссон" && (
-            <button onClick={() => beginCheckout("subscription")} className="mt-5 text-xs font-bold text-[#ff6679]">Эрхээ ахиулах →</button>
+            <button onClick={() => beginCheckout("weekly")} className="mt-5 text-xs font-bold text-[#ff6679]">7 хоног · {formatMoney(WEEKLY_PRICE)} →</button>
           )}
         </div>
         <div className="rounded-2xl border border-white/10 bg-white/[.03] p-6">
