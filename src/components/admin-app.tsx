@@ -1070,14 +1070,15 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
       </div>
       {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-        <table className="w-full min-w-[860px] text-left text-xs">
+        <table className="w-full min-w-[1040px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
-            <tr>{["НЭР", "НЭВТРЭХ НЭР", "УРИЛГЫН КОД", "ХОЛБОО", "ТӨЛБӨР", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+            <tr>{["НЭР", "НЭВТРЭХ НЭР", "УРИЛГЫН КОД", "ХОЛБОО", "ДАНС", "ТӨЛБӨР", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
           </thead>
           <tbody>
             <tr className="border-b border-white/[.05]">
               <td className="px-5 py-4 font-bold">Super admin</td>
               <td className="px-5 text-zinc-400">орчны тохиргоо</td>
+              <td className="px-5 text-zinc-500">—</td>
               <td className="px-5 text-zinc-500">—</td>
               <td className="px-5 text-zinc-500">—</td>
               <td className="px-5 text-zinc-500">—</td>
@@ -1090,6 +1091,7 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
                 <td className="px-5 text-zinc-400">{admin.username}</td>
                 <td className="px-5 font-bold tracking-wider text-zinc-300">{admin.inviteCode || "—"}</td>
                 <td className="px-5 text-zinc-500">{admin.phone ? formatPhone(admin.phone) : "—"}{admin.email && <small className="block text-zinc-600">{admin.email}</small>}</td>
+                <td className="px-5 text-zinc-400">{admin.bankAccount ? <><span className="font-bold tracking-wide text-zinc-200">{admin.bankAccount}</span>{admin.bankName && <small className="block text-zinc-600">{admin.bankName}</small>}</> : "—"}</td>
                 <td className={`px-5 font-bold ${admin.source === "self" && !admin.paid ? "text-amber-400" : "text-zinc-400"}`}>{admin.source === "self" ? (admin.paid ? formatMoney(CREATOR_FEE) : "Хүлээгдэж буй") : "Гараар"}</td>
                 <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
                 <td className="px-5">

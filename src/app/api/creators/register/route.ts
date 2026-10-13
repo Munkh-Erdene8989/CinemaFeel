@@ -43,6 +43,8 @@ export async function POST(request: NextRequest) {
     portfolio: draft.portfolio,
     contentType: draft.contentType,
     experience: draft.experience,
+    bankName: draft.bankName,
+    bankAccount: draft.bankAccount,
     termsAcceptedAt: Date.now(),
     active: false,
     paid: false,

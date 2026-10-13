@@ -17,6 +17,8 @@ export type CreatorDraft = {
   contentType: string;
   experience: string;
   inviteCode: string;
+  bankName: string;
+  bankAccount: string;
 };
 
 export function parseCreatorDraft(body: Record<string, unknown>): { value: CreatorDraft } | { error: string } {
@@ -30,6 +32,8 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
   const portfolio = String(body.portfolio ?? "").trim();
   const experience = String(body.experience ?? "").trim();
   const inviteCode = normalizeInviteCode(String(body.inviteCode ?? ""));
+  const bankName = String(body.bankName ?? "").trim().replace(/\s+/g, " ");
+  const bankAccount = String(body.bankAccount ?? "").replace(/\D/g, "");
 
   if (lastName.length < 2 || lastName.length > 40) return { error: "Овгоо оруулна уу." };
   if (firstName.length < 2 || firstName.length > 40) return { error: "Нэрээ оруулна уу." };
@@ -41,6 +45,8 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
   if (portfolio.length > 240 || /^(javascript|data):/i.test(portfolio)) return { error: "Холбоос буруу байна." };
   if (experience.length > 1000) return { error: "Туршлага, санаа 1000 тэмдэгтээс богино байна." };
   if (inviteCode && (inviteCode.length < 4 || inviteCode.length > 12)) return { error: "Урилгын код буруу байна." };
+  if (bankName.length < 2 || bankName.length > 60) return { error: "Банкны нэрээ оруулна уу." };
+  if (bankAccount.length < 8 || bankAccount.length > 20) return { error: "Дансны дугаар 8–20 оронтой байна." };
   if (body.terms !== true) return { error: "Үйлчилгээний нөхцөлийг зөвшөөрнө үү." };
 
   return {
@@ -55,6 +61,8 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
       contentType,
       experience,
       inviteCode,
+      bankName,
+      bankAccount,
     },
   };
 }

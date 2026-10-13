@@ -24,11 +24,13 @@ export type StaffAdmin = {
   paid: boolean;
   source: "self" | "manual";
   contentType: string;
+  bankName: string;
+  bankAccount: string;
   inviteCode: string;
   invitedByName: string;
 };
 
-export const CREATOR_FEE = 1000;
+export const CREATOR_FEE = 10000;
 
 export const creatorContentTypes = ["Short drama", "Романтик", "Драма", "Комеди", "Триллер", "Бусад"] as const;
 

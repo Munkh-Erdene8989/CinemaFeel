@@ -40,6 +40,8 @@ export function mapStaff(id: string, data: Record<string, unknown>): StaffAdmin 
     paid: source === "self" ? data.paid === true : true,
     source,
     contentType: String(data.contentType ?? ""),
+    bankName: String(data.bankName ?? ""),
+    bankAccount: String(data.bankAccount ?? ""),
     inviteCode: String(data.inviteCode ?? ""),
     invitedByName: String(data.invitedByName ?? ""),
   };

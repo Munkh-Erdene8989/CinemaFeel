@@ -19,6 +19,8 @@ type FormState = {
   portfolio: string;
   experience: string;
   inviteCode: string;
+  bankName: string;
+  bankAccount: string;
   terms: boolean;
 };
 
@@ -41,6 +43,8 @@ const emptyForm: FormState = {
   portfolio: "",
   experience: "",
   inviteCode: "",
+  bankName: "",
+  bankAccount: "",
   terms: false,
 };
 
@@ -77,6 +81,8 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
     form.password.length >= 8 &&
     form.phone.replace(/\D/g, "").length >= 8 &&
     form.email.includes("@") &&
+    form.bankName.trim().length >= 2 &&
+    form.bankAccount.replace(/\D/g, "").length >= 8 &&
     form.terms;
 
   const pay = async () => {
@@ -233,6 +239,8 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
                 </select>
               </Field>
               <Field label="Портфолио / сошиал холбоос"><input value={form.portfolio} onChange={(e) => update("portfolio", e.target.value)} placeholder="https://..." className="admin-input !h-11" /></Field>
+              <Field label="Банкны нэр" required><input value={form.bankName} onChange={(e) => update("bankName", e.target.value)} placeholder="Хаан банк" className="admin-input !h-11" /></Field>
+              <Field label="Дансны дугаар" required><input value={form.bankAccount} onChange={(e) => update("bankAccount", e.target.value.replace(/[^\d\s]/g, ""))} inputMode="numeric" placeholder="5000 123456" className="admin-input !h-11" /></Field>
               <div className="sm:col-span-2">
                 <Field label="Урилгын код">
                   <input value={form.inviteCode} onChange={(e) => update("inviteCode", e.target.value.toUpperCase())} placeholder="Урьсан хүний код" autoCapitalize="characters" autoCorrect="off" className="admin-input !h-11 uppercase tracking-[0.12em]" />
