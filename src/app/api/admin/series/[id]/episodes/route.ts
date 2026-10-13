@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { newId, readManageableSeries } from "@/lib/catalog";
+import { announceNewEpisode } from "@/lib/episode-announce";
 import { adminBucket } from "@/lib/firebase-admin";
-import { assertAdmin, jsonError } from "@/lib/http";
+import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
 import { parseYouTubeUrl } from "@/lib/youtube";
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -45,11 +46,13 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     source?: "youtube";
     startAt?: number;
     subtitleOffsetMs?: number;
+    telegramAnnounce: "pending";
   } = {
     number: Number(body.number ?? 1),
     title: String(body.title || `${body.number}-р анги`),
     storagePath,
     duration: Number(body.duration ?? 0),
+    telegramAnnounce: "pending",
   };
 
   if (youtubeId) {
@@ -76,5 +79,12 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
   await series.collection("episodes").doc(episodeId).set(episode);
   const count = (await series.collection("episodes").get()).size;
   await series.set({ episodes: count }, { merge: true });
-  return NextResponse.json({ episode: { id: episodeId, ...episode } });
+  let telegram: { telegramSent?: boolean; telegramError?: string; telegramPending?: string } = {};
+  try {
+    telegram = await announceNewEpisode(id, episodeId, siteOrigin(request));
+  } catch (error) {
+    console.error("telegram episode announce failed", error);
+    telegram = { telegramError: "Telegram мэдэгдэл илгээгдсэнгүй." };
+  }
+  return NextResponse.json({ episode: { id: episodeId, ...episode }, ...telegram });
 }

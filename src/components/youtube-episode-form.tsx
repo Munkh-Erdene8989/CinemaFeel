@@ -136,7 +136,7 @@ export function YoutubeEpisodeForm({
       }
       const number = (content.find((film) => film.id === id)?.episodeList.length ?? 0) + 1;
       setBusy("Анги хадгалж байна...");
-      await adminFetch(`/api/admin/series/${id}/episodes`, {
+      const saved = await adminFetch<{ telegramSent?: boolean; telegramError?: string; telegramPending?: string }>(`/api/admin/series/${id}/episodes`, {
         method: "POST",
         body: JSON.stringify({
           number,
@@ -147,8 +147,11 @@ export function YoutubeEpisodeForm({
           duration: 0,
         }),
       });
+      const telegram = saved.telegramSent
+        ? "Telegram сувагт шинэ ангийн мэдэгдэл илгээлээ."
+        : saved.telegramError || saved.telegramPending || "";
       setBusy("");
-      await onSaved("YouTube анги нэмэгдлээ.");
+      await onSaved(telegram ? `YouTube анги нэмэгдлээ. ${telegram}` : "YouTube анги нэмэгдлээ.");
     } catch (cause) {
       setBusy("");
       setError(cause instanceof Error ? cause.message : "Хадгалж чадсангүй.");

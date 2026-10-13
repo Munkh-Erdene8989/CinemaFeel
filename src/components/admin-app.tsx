@@ -24,6 +24,23 @@ async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   return data;
 }
 
+type ReleaseNotice = {
+  notified?: number;
+  notifyError?: string;
+  notifyPending?: string;
+  telegramSent?: boolean;
+  telegramError?: string;
+  telegramPending?: string;
+};
+
+function telegramNote(saved: ReleaseNotice) {
+  const parts: string[] = [];
+  if (saved.telegramSent) parts.push("Telegram сувагт шинэ ангийн мэдэгдэл илгээлээ.");
+  if (saved.telegramError) parts.push(saved.telegramError);
+  else if (!saved.telegramSent && saved.telegramPending) parts.push(saved.telegramPending);
+  return parts.join(" ");
+}
+
 function shareHref(code: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `${origin}/s/${code}`;
@@ -454,14 +471,15 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   };
   const visible = content.filter((film) => film.title.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || film.status === filter));
   const toggleStatus = async (film: SeriesWithEpisodes) => {
-    const saved = await adminFetch<{ notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${film.id}`, {
+    const saved = await adminFetch<ReleaseNotice>(`/api/admin/series/${film.id}`, {
       method: "PATCH",
       body: JSON.stringify({ status: film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн" }),
     });
     await reload();
-    const extra = saved.notified
+    const email = saved.notified
       ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү имэйл илгээлээ.`
       : saved.notifyError || saved.notifyPending || "";
+    const extra = [email, telegramNote(saved)].filter(Boolean).join(" ");
     notify(extra ? `Контентын төлөв шинэчлэгдлээ. ${extra}` : "Контентын төлөв шинэчлэгдлээ.");
   };
   return (
@@ -614,10 +632,11 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
   const mailNote = useRef("");
   const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
   const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
-  const rememberMail = (saved: { notified?: number; notifyError?: string; notifyPending?: string }) => {
-    const note = saved.notified
+  const rememberMail = (saved: ReleaseNotice) => {
+    const email = saved.notified
       ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү шинэ киноны имэйл илгээлээ.`
       : saved.notifyError || saved.notifyPending || "";
+    const note = [email, telegramNote(saved)].filter(Boolean).join(" ");
     if (!note) return;
     mailNote.current = note;
     setMailed(note);
@@ -629,14 +648,14 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     try {
       const payload = { ...form, access: Number(form.price) === 0 ? "free" : "paid", episodes: episodes.length || 1 };
       if (!seriesId) {
-        const created = await adminFetch<{ id: string; shareCode: string; notified?: number; notifyError?: string; notifyPending?: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
+        const created = await adminFetch<ReleaseNotice & { id: string; shareCode: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
         setSeriesId(created.id);
         setShareCode(created.shareCode);
         rememberMail(created);
         setBusy("");
         return created.id;
       }
-      const saved = await adminFetch<{ shareCode?: string; notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
+      const saved = await adminFetch<ReleaseNotice & { shareCode?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
       if (saved.shareCode) setShareCode(saved.shareCode);
       rememberMail(saved);
       setBusy("");
@@ -695,11 +714,12 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     try {
       const storagePath = await uploadAdminFile(file, "video", id, onProgress);
       const number = episodes.length + 1;
-      const created = await adminFetch<{ episode: Episode }>(`/api/admin/series/${id}/episodes`, {
+      const created = await adminFetch<ReleaseNotice & { episode: Episode }>(`/api/admin/series/${id}/episodes`, {
         method: "POST",
         body: JSON.stringify({ number, title: title || `${number}-р анги`, storagePath, duration: 0 }),
       });
       setEpisodes((current) => [...current, created.episode]);
+      rememberMail(created);
       setBusy("");
       return true;
     } catch (cause) {
