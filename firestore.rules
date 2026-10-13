@@ -15,6 +15,9 @@ service cloud.firestore {
         allow read: if get(/databases/$(database)/documents/series/$(seriesId)).data.status == 'Нийтлэгдсэн';
         allow write: if false;
       }
+      match /playback/{episodeId} {
+        allow read, write: if false;
+      }
     }
 
     match /users/{uid} {

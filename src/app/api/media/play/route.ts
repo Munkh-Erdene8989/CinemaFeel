@@ -18,7 +18,31 @@ export async function POST(request: NextRequest) {
   if (!allowed) return NextResponse.json({ error: "Энэ киног үзэх эрхгүй байна.", code: "paywall" }, { status: 403 });
   const episode = await seriesSnap.ref.collection("episodes").doc(body.episodeId).get();
   if (!episode.exists) return jsonError("Анги олдсонгүй.", 404);
-  const storagePath = String(episode.data()?.storagePath ?? "");
+  const data = episode.data() ?? {};
+  const playback = await seriesSnap.ref.collection("playback").doc(episode.id).get();
+  const youtubeId = String(playback.data()?.youtubeId ?? "");
+  if (youtubeId) {
+    let subtitleText = "";
+    const subtitlePath = String(playback.data()?.subtitlePath ?? "");
+    if (subtitlePath) {
+      try {
+        const [buffer] = await adminBucket().file(subtitlePath).download();
+        subtitleText = buffer.toString("utf8");
+      } catch (error) {
+        console.warn("SRT уншиж чадсангүй.", error);
+      }
+    }
+    await seriesSnap.ref.set({ views: FieldValue.increment(1) }, { merge: true });
+    await recordUniqueView(body.seriesId, user.uid, String(seriesSnap.data()?.ownerId ?? ""));
+    return NextResponse.json({
+      youtubeId,
+      startAt: Number(data.startAt ?? 0),
+      subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
+      subtitleText,
+      title: data.title || series.title,
+    });
+  }
+  const storagePath = String(data.storagePath ?? "");
   if (!storagePath) return jsonError("Энэ ангийн видео оруулаагүй байна.", 404);
   const [url] = await adminBucket().file(storagePath).getSignedUrl({
     version: "v4",

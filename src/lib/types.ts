@@ -65,6 +65,9 @@ export type Episode = {
   title: string;
   storagePath: string;
   duration: number;
+  source?: "file" | "youtube";
+  startAt?: number;
+  subtitleOffsetMs?: number;
 };
 
 export type Lesson = {

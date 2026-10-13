@@ -6,6 +6,7 @@ import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
+import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { Icon } from "./icons";
 import { useSite } from "./site-provider";
 
@@ -15,6 +16,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const film = series.find((item) => item.id === seriesId) ?? null;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
+  const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleText: string; subtitleOffsetMs: number } | null>(null);
   const [error, setError] = useState("");
   const [needsAuth, setNeedsAuth] = useState(false);
   const [needsPay, setNeedsPay] = useState(false);
@@ -40,9 +42,10 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
 
   useEffect(() => {
     if (!current?.id) return;
-    if (!current.storagePath) {
+    if (!current.storagePath && current.source !== "youtube") {
       setLoading(false);
       setUrl("");
+      setYoutube(null);
       setNeedsAuth(false);
       setNeedsPay(false);
       setError("Энэ ангийн видео оруулаагүй байна.");
@@ -51,6 +54,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     if (!user?.uid) {
       setLoading(false);
       setUrl("");
+      setYoutube(null);
       setNeedsPay(false);
       setNeedsAuth(true);
       setError("");
@@ -63,6 +67,8 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     (async () => {
       setLoading(true);
       setError("");
+      setUrl("");
+      setYoutube(null);
       setNeedsAuth(false);
       setNeedsPay(false);
       const token = await clientAuth().currentUser?.getIdToken();
@@ -71,7 +77,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ seriesId, episodeId: current.id }),
       });
-      const data = (await response.json()) as { error?: string; url?: string; code?: string };
+      const data = (await response.json()) as { error?: string; url?: string; code?: string; youtubeId?: string; startAt?: number; subtitleText?: string; subtitleOffsetMs?: number };
       if (ignore) return;
       setLoading(false);
       if (data.code === "auth") {
@@ -82,18 +88,36 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         setNeedsPay(true);
         return;
       }
-      if (!response.ok || !data.url) {
+      if (!response.ok) {
         setUrl("");
+        setYoutube(null);
         setError(data.error || "Видео нээж чадсангүй.");
         return;
       }
       loadedFor.current = requestKey;
+      if (data.youtubeId) {
+        setYoutube({
+          videoId: data.youtubeId,
+          startAt: Number(data.startAt ?? 0),
+          subtitleText: data.subtitleText || "",
+          subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
+        });
+        setUrl("");
+        return;
+      }
+      if (!data.url) {
+        setYoutube(null);
+        setUrl("");
+        setError(data.error || "Видео нээж чадсангүй.");
+        return;
+      }
+      setYoutube(null);
       setUrl(data.url);
     })();
     return () => {
       ignore = true;
     };
-  }, [user?.uid, current?.id, current?.storagePath, seriesId]);
+  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId]);
 
   const saveProgress = (seconds: number) => {
     if (!user || !current) return;
@@ -103,6 +127,10 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       updatedAt: Date.now(),
     }, { merge: true }).catch(() => undefined);
   };
+
+  const episodeIndex = episodes.findIndex((item) => item.id === current?.id);
+  const previousEpisode = episodeIndex > 0 ? episodes[episodeIndex - 1] : null;
+  const nextEpisode = episodeIndex >= 0 && episodeIndex < episodes.length - 1 ? episodes[episodeIndex + 1] : null;
 
   if (!film && series.length > 0) {
     return (
@@ -115,9 +143,29 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
 
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
-      <button onClick={() => film && openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film?.title || "Кино"}</button>
-      <div className="mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]">
-        <div className="mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black">
+      {!youtube && <button onClick={() => film && openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film?.title || "Кино"}</button>}
+      <div className={youtube ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
+        <div className={youtube ? "w-full overflow-hidden rounded-2xl bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
+          {youtube ? (
+            <CustomYouTubePlayer
+              key={current?.id}
+              videoId={youtube.videoId}
+              startAt={youtube.startAt}
+              subtitleText={youtube.subtitleText}
+              subtitleOffsetMs={youtube.subtitleOffsetMs}
+              autoplay
+              title={film?.title}
+              episodeLabel={current ? `${current.number}-р анги` : undefined}
+              onBack={() => film && openFilm(film)}
+              onEpisodes={() => document.getElementById("watch-episodes")?.scrollIntoView({ behavior: "smooth", block: "start" })}
+              onPrevEpisode={previousEpisode ? () => router.push(`/watch/${seriesId}/${previousEpisode.number}`) : undefined}
+              onNextEpisode={nextEpisode ? () => router.push(`/watch/${seriesId}/${nextEpisode.number}`) : undefined}
+              onTimeUpdate={(seconds) => {
+                const whole = Math.floor(seconds);
+                if (whole > 0 && whole % 5 === 0) saveProgress(whole);
+              }}
+            />
+          ) : (
           <div className="relative aspect-[9/16] bg-zinc-900">
             {url ? (
               <video
@@ -156,8 +204,9 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               </div>
             )}
           </div>
+          )}
         </div>
-        <div>
+        <div id="watch-episodes">
           <p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff536a]">{film?.genre}</p>
           <h1 className="mt-2 text-3xl font-black">{film?.title}</h1>
           <p className="mt-3 text-sm leading-7 text-zinc-400">{film?.description}</p>
@@ -168,7 +217,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-black"><Icon name="play" className="h-3.5 w-3.5" fill /></span>
                 <span>
                   <b className="block text-sm">{episode.number}-р анги</b>
-                  <span className="text-xs text-zinc-500">{episode.title || "Анги"}{episode.storagePath ? "" : " · видеогүй"}</span>
+                  <span className="text-xs text-zinc-500">{episode.title || "Анги"}{episode.storagePath || episode.source === "youtube" ? "" : " · видеогүй"}</span>
                 </span>
               </button>
             ))}

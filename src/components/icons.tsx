@@ -1,3 +1,7 @@
+"use client";
+
+import { useRef, useState, type RefObject } from "react";
+
 const paths: Record<string, string> = {
   play: "m9 6 9 6-9 6V6Z",
   search: "M11 18a7 7 0 1 1 0-14 7 7 0 0 1 0 14Zm5-2 4 4",
@@ -50,10 +54,11 @@ export function Logo({ onClick, href = "/" }: { onClick?: () => void; href?: str
   );
 }
 
-export function Modal({ children, onClose, wide = false, priority = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean }) {
+export function Modal({ children, onClose, wide = false, priority = false, size }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "xl" }) {
+  const width = size === "xl" ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md";
   return (
     <div className={`fixed inset-0 ${priority ? "z-[80]" : "z-[70]"} grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-md`} role="dialog" aria-modal="true">
-      <div className={`relative my-6 w-full ${wide ? "max-w-3xl" : "max-w-md"} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
+      <div className={`relative my-6 w-full ${width} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
         <button onClick={onClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/30 text-zinc-300 backdrop-blur-md hover:bg-white/10" aria-label="Хаах">
           <Icon name="close" />
         </button>
@@ -69,5 +74,57 @@ export function AdminField({ label, children }: { label: string; children: React
       <span className="mb-2 block text-xs font-bold text-zinc-500">{label}</span>
       {children}
     </label>
+  );
+}
+
+export function FilePicker({
+  accept,
+  disabled,
+  fileName,
+  emptyLabel = "Файл сонгоогүй",
+  buttonLabel = "Файл сонгох",
+  onFile,
+  inputRef,
+}: {
+  accept?: string;
+  disabled?: boolean;
+  fileName?: string;
+  emptyLabel?: string;
+  buttonLabel?: string;
+  onFile: (file: File | null) => void;
+  inputRef?: RefObject<HTMLInputElement | null>;
+}) {
+  const ownRef = useRef<HTMLInputElement>(null);
+  const ref = inputRef ?? ownRef;
+  const [picked, setPicked] = useState("");
+  const shown = fileName !== undefined ? fileName : picked;
+  return (
+    <div className={`flex h-12 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-2 ${disabled ? "opacity-40" : ""}`}>
+      <button
+        type="button"
+        disabled={disabled}
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          ref.current?.click();
+        }}
+        className="h-8 shrink-0 rounded-lg bg-white px-3 text-xs font-extrabold text-black disabled:opacity-40"
+      >
+        {buttonLabel}
+      </button>
+      <span className="min-w-0 truncate text-sm text-zinc-400">{shown || emptyLabel}</span>
+      <input
+        ref={ref}
+        type="file"
+        accept={accept}
+        disabled={disabled}
+        className="sr-only"
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null;
+          setPicked(file?.name ?? "");
+          onFile(file);
+        }}
+      />
+    </div>
   );
 }

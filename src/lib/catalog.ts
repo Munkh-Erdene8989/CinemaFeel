@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "crypto";
-import type { DocumentData } from "firebase-admin/firestore";
+import type { DocumentData, DocumentReference } from "firebase-admin/firestore";
 import { adminBucket, adminDb } from "./firebase-admin";
 import type { AdminSession, Episode, Series, SeriesWithEpisodes } from "./types";
 
@@ -115,4 +115,12 @@ export async function posterUrl(storagePath: string) {
   await file.setMetadata({ metadata: { firebaseStorageDownloadTokens: token } });
   const bucket = adminBucket().name;
   return `https://firebasestorage.googleapis.com/v0/b/${bucket}/o/${encodeURIComponent(storagePath)}?alt=media&token=${token}`;
+}
+
+export async function deleteEpisodeMedia(seriesRef: DocumentReference, episodeId: string, data: DocumentData) {
+  const playbackRef = seriesRef.collection("playback").doc(episodeId);
+  const playback = await playbackRef.get();
+  const paths = [String(data.storagePath ?? ""), String(playback.data()?.subtitlePath ?? "")].filter(Boolean);
+  await Promise.all(paths.map((filePath) => adminBucket().file(filePath).delete({ ignoreNotFound: true })));
+  if (playback.exists) await playbackRef.delete();
 }

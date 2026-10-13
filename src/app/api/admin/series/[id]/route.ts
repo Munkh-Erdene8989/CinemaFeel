@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { announceIfReady } from "@/lib/announce";
-import { posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
+import { deleteEpisodeMedia, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
 import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
@@ -52,17 +52,20 @@ export async function DELETE(request: NextRequest, context: Context) {
   const episodes = await ref.collection("episodes").get();
   await Promise.all(
     episodes.docs.map(async (episode) => {
-      const path = String(episode.data().storagePath ?? "");
-      if (path) await adminBucket().file(path).delete({ ignoreNotFound: true });
+      await deleteEpisodeMedia(ref, episode.id, episode.data());
       await episode.ref.delete();
     }),
   );
+  const playback = await ref.collection("playback").get();
+  await Promise.all(playback.docs.map((item) => item.ref.delete()));
   const [posters] = await adminBucket().getFiles({ prefix: `posters/${id}/` });
   await Promise.all(posters.map((file) => file.delete({ ignoreNotFound: true })));
   const [covers] = await adminBucket().getFiles({ prefix: `covers/${id}/` });
   await Promise.all(covers.map((file) => file.delete({ ignoreNotFound: true })));
   const [videos] = await adminBucket().getFiles({ prefix: `videos/${id}/` });
   await Promise.all(videos.map((file) => file.delete({ ignoreNotFound: true })));
+  const [subtitles] = await adminBucket().getFiles({ prefix: `subtitles/${id}/` });
+  await Promise.all(subtitles.map((file) => file.delete({ ignoreNotFound: true })));
   const views = await adminDb().collection("views").where("seriesId", "==", id).get();
   for (let index = 0; index < views.docs.length; index += 400) {
     const batch = adminDb().batch();

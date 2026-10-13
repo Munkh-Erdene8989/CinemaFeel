@@ -1,6 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { readManageableSeries } from "@/lib/catalog";
-import { adminBucket } from "@/lib/firebase-admin";
+import { deleteEpisodeMedia, readManageableSeries } from "@/lib/catalog";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; episodeId: string }> }) {
@@ -12,8 +11,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const ref = loaded.ref.collection("episodes").doc(episodeId);
   const snap = await ref.get();
   if (!snap.exists) return jsonError("Анги олдсонгүй.", 404);
-  const path = String(snap.data()?.storagePath ?? "");
-  if (path) await adminBucket().file(path).delete({ ignoreNotFound: true });
+  await deleteEpisodeMedia(loaded.ref, episodeId, snap.data() ?? {});
   await ref.delete();
   const count = (await loaded.ref.collection("episodes").get()).size;
   await loaded.ref.set({ episodes: count }, { merge: true });

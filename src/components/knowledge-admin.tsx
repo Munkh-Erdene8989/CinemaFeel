@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { Lesson } from "@/lib/types";
-import { AdminField, Icon, Modal } from "./icons";
+import { AdminField, FilePicker, Icon, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -277,7 +277,7 @@ function LessonEditor({ lesson, onClose, onSaved }: { lesson: Lesson | null; onC
             <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
               {cover ? <img src={cover} alt="" className="aspect-video w-full object-cover" /> : <div className="grid aspect-video place-items-center text-xs text-zinc-600">Ковер заавал биш</div>}
             </div>
-            <input key={`cover-${fileKey}`} type="file" accept="image/jpeg,image/png,image/webp" onChange={(event) => event.target.files?.[0] && onCover(event.target.files[0])} className="admin-input mt-3 pt-2" />
+            <FilePicker key={`cover-${fileKey}`} accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" onFile={(file) => file && onCover(file)} />
           </AdminField>
           <AdminField label="Видео">
             {preview ? (
@@ -287,7 +287,7 @@ function LessonEditor({ lesson, onClose, onSaved }: { lesson: Lesson | null; onC
                 {hasVideo ? "Видео ачаалж байна..." : "MP4, WebM эсвэл MOV"}
               </div>
             )}
-            <input key={`video-${fileKey}`} type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(event) => event.target.files?.[0] && onVideo(event.target.files[0])} className="admin-input mt-3 pt-2" />
+            <FilePicker key={`video-${fileKey}`} accept="video/mp4,video/webm,video/quicktime" buttonLabel="Видео сонгох" emptyLabel="Видео сонгоогүй" onFile={(file) => file && onVideo(file)} />
           </AdminField>
         </div>
         {busy && <p className="mt-4 text-xs font-bold text-[#ff6679]">{busy}</p>}

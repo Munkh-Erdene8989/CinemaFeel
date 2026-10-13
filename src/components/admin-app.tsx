@@ -7,7 +7,8 @@ import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subsc
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
 import { KnowledgeAdmin } from "./knowledge-admin";
-import { AdminField, Icon, Logo, Modal } from "./icons";
+import { YoutubeEpisodeForm } from "./youtube-episode-form";
+import { AdminField, FilePicker, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -46,17 +47,31 @@ async function copyText(value: string) {
   }
 }
 
-async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", seriesId: string) {
+async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", seriesId: string, onProgress?: (percent: number) => void) {
+  const contentType = file.type || "application/octet-stream";
   const created = await adminFetch<{ uploadUrl: string; storagePath: string }>("/api/admin/upload-url", {
     method: "POST",
-    body: JSON.stringify({ kind, seriesId, contentType: file.type || "application/octet-stream", fileName: file.name }),
+    body: JSON.stringify({ kind, seriesId, contentType, fileName: file.name }),
   });
-  const put = await fetch(created.uploadUrl, {
-    method: "PUT",
-    headers: { "Content-Type": file.type || "application/octet-stream" },
-    body: file,
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", created.uploadUrl);
+    xhr.setRequestHeader("Content-Type", contentType);
+    xhr.upload.onprogress = (event) => {
+      if (!onProgress || !event.lengthComputable || event.total <= 0) return;
+      onProgress(Math.min(99, Math.round((event.loaded / event.total) * 100)));
+    };
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        onProgress?.(100);
+        resolve();
+        return;
+      }
+      reject(new Error("Файл Firebase руу хуулагдаж чадсангүй."));
+    };
+    xhr.onerror = () => reject(new Error("Файл Firebase руу хуулагдаж чадсангүй."));
+    xhr.send(file);
   });
-  if (!put.ok) throw new Error("Файл Firebase руу хуулагдаж чадсангүй.");
   return created.storagePath;
 }
 
@@ -413,6 +428,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
   const [editing, setEditing] = useState<SeriesWithEpisodes | "new" | null>(null);
+  const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [genreName, setGenreName] = useState("");
   const [genreError, setGenreError] = useState("");
   const addGenre = async () => {
@@ -455,10 +471,16 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
           <h2 className="text-2xl font-black">Контентын сан</h2>
           <p className="mt-1 text-sm text-zinc-600">{content.length} цуврал · {content.reduce((sum, film) => sum + film.episodeList.length, 0)} анги</p>
         </div>
-        <button onClick={() => setEditing("new")} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black">
-          <Icon name="plus" className="h-4 w-4" />
-          Шинэ контент
-        </button>
+        <div className="flex flex-wrap gap-2">
+          <button onClick={() => setYoutubeOpen(true)} className="flex items-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-xs font-extrabold text-white">
+            <Icon name="play" className="h-4 w-4" />
+            YouTube-оос
+          </button>
+          <button onClick={() => setEditing("new")} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black">
+            <Icon name="plus" className="h-4 w-4" />
+            Шинэ контент
+          </button>
+        </div>
       </div>
       {canManageGenres && (
         <div className="mt-6 rounded-2xl border border-white/[.07] bg-[#141419] p-5">
@@ -535,6 +557,18 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
         </table>
         {!visible.length && <p className="py-12 text-center text-sm text-zinc-600">Илэрц олдсонгүй.</p>}
       </div>
+      {youtubeOpen && (
+        <YoutubeEpisodeForm
+          content={content}
+          genres={genres}
+          onClose={() => setYoutubeOpen(false)}
+          onSaved={async (message) => {
+            setYoutubeOpen(false);
+            await reload();
+            notify(message);
+          }}
+        />
+      )}
       {editing && (
         <ContentEditor
           film={editing === "new" ? null : editing}
@@ -653,12 +687,13 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
     }
   };
 
-  const addEpisode = async (file: File, title: string) => {
+  const addEpisode = async (file: File, title: string, onProgress?: (percent: number) => void) => {
     const id = seriesId || (await saveMeta());
-    if (!id) return;
+    if (!id) return false;
     setBusy("Видео Firebase руу хуулж байна...");
+    setError("");
     try {
-      const storagePath = await uploadAdminFile(file, "video", id);
+      const storagePath = await uploadAdminFile(file, "video", id, onProgress);
       const number = episodes.length + 1;
       const created = await adminFetch<{ episode: Episode }>(`/api/admin/series/${id}/episodes`, {
         method: "POST",
@@ -666,9 +701,11 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
       });
       setEpisodes((current) => [...current, created.episode]);
       setBusy("");
+      return true;
     } catch (cause) {
       setBusy("");
       setError(cause instanceof Error ? cause.message : "Видео хуулж чадсангүй.");
+      return false;
     }
   };
 
@@ -721,7 +758,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
             <AdminField label="Тайлбар"><textarea value={form.description} onChange={(e) => update("description", e.target.value)} className="admin-input h-24 py-3" /></AdminField>
           </div>
           <AdminField label="Постерын URL"><input value={form.image} onChange={(e) => update("image", e.target.value)} className="admin-input" /></AdminField>
-          <AdminField label="Постер файл"><input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && onPoster(e.target.files[0])} className="admin-input pt-2" /></AdminField>
+          <AdminField label="Постер файл"><FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" onFile={(file) => file && onPoster(file)} /></AdminField>
           <div className="sm:col-span-2">
             <AdminField label="Вэбсайт ковер">
               <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
@@ -731,7 +768,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
                   <div className="grid aspect-[21/9] place-items-center px-6 text-center text-xs text-zinc-600">Нүүр хуудсын өргөн ковер. Онцлох контент дээр харагдана.</div>
                 )}
               </div>
-              <input type="file" accept="image/*" onChange={(e) => e.target.files?.[0] && onCover(e.target.files[0])} className="admin-input mt-3 pt-2" />
+              <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" onFile={(file) => file && onCover(file)} />
             </AdminField>
           </div>
           <div className="sm:col-span-2">
@@ -771,7 +808,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
           <div className="mt-3 space-y-2">
             {episodes.map((episode) => (
               <div key={episode.id} className="flex items-center justify-between rounded-xl border border-white/10 px-4 py-3 text-sm">
-                <span>{episode.number}. {episode.title} {episode.storagePath ? "" : "· видеогүй"}</span>
+                <span>{episode.number}. {episode.title} {episode.source === "youtube" ? "· YouTube" : episode.storagePath ? "" : "· видеогүй"}</span>
                 <button onClick={() => removeEpisode(episode)} className="text-xs font-bold text-red-400">Устгах</button>
               </div>
             ))}
@@ -795,14 +832,41 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
   );
 }
 
-function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string) => Promise<void> }) {
+function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string, onProgress: (percent: number) => void) => Promise<boolean> }) {
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [progress, setProgress] = useState<number | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const uploading = progress !== null;
+
+  const submit = async () => {
+    if (!file || uploading) return;
+    setProgress(0);
+    const saved = await onUpload(file, title, setProgress);
+    setProgress(null);
+    if (!saved) return;
+    setTitle("");
+    setFile(null);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
   return (
-    <div className="mt-4 grid gap-3 rounded-2xl border border-dashed border-white/15 p-4 sm:grid-cols-[1fr_1fr_auto]">
-      <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ангийн нэр" className="admin-input" />
-      <input type="file" accept="video/mp4,video/webm,video/quicktime" onChange={(e) => setFile(e.target.files?.[0] ?? null)} className="admin-input pt-2" />
-      <button disabled={!file} onClick={() => file && onUpload(file, title).then(() => { setTitle(""); setFile(null); })} className="rounded-xl bg-white px-4 text-xs font-extrabold text-black disabled:opacity-40">Видео нэмэх</button>
+    <div className="mt-4 rounded-2xl border border-dashed border-white/15 p-4">
+      <div className="grid gap-3 sm:grid-cols-[1fr_1fr_auto]">
+        <input value={title} onChange={(e) => setTitle(e.target.value)} placeholder="Ангийн нэр" disabled={uploading} className="admin-input" />
+        <FilePicker inputRef={inputRef} accept="video/mp4,video/webm,video/quicktime" disabled={uploading} buttonLabel="Видео сонгох" emptyLabel="Видео сонгоогүй" fileName={file?.name ?? ""} onFile={setFile} />
+        <button disabled={!file || uploading} onClick={submit} className={`rounded-xl px-4 text-xs font-extrabold ${uploading ? "bg-[#ff2a2a] text-white" : "bg-white text-black disabled:opacity-40"}`}>
+          {uploading ? `${progress}%` : "Видео нэмэх"}
+        </button>
+      </div>
+      {uploading && (
+        <div className="mt-3">
+          <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+            <div className="h-full rounded-full bg-[#ff2a2a] transition-[width] duration-150" style={{ width: `${progress}%` }} />
+          </div>
+          <p className="mt-2 text-xs font-bold text-zinc-400">Firebase руу хуулж байна · {progress}%</p>
+        </div>
+      )}
     </div>
   );
 }

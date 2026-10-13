@@ -1,8 +1,19 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { WEEKLY_PRICE, type CheckoutMode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
+import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { Icon, Modal } from "./icons";
+
+type YoutubePreview = {
+  videoId: string;
+  startAt: number;
+  subtitleText: string;
+  subtitleOffsetMs: number;
+  episodeLabel: string;
+  title: string;
+};
 
 export function FilmModal({
   film,
@@ -24,9 +35,48 @@ export function FilmModal({
   onWatch: () => void;
 }) {
   const available = film.access === "free" || isOwned || subscribed;
+  const [preview, setPreview] = useState<YoutubePreview | null>(null);
+
+  useEffect(() => {
+    let ignore = false;
+    setPreview(null);
+    (async () => {
+      const response = await fetch("/api/media/preview", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ seriesId: film.id }),
+      });
+      const data = (await response.json().catch(() => ({}))) as YoutubePreview & { youtube?: boolean };
+      if (ignore || !response.ok || !data.youtube || !data.videoId) return;
+      setPreview({
+        videoId: data.videoId,
+        startAt: Number(data.startAt ?? 0),
+        subtitleText: data.subtitleText || "",
+        subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
+        episodeLabel: data.episodeLabel || "",
+        title: data.title || film.title,
+      });
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [film.id, film.title]);
+
   return (
-    <Modal onClose={onClose} wide>
-      <div className="grid md:grid-cols-[.8fr_1.2fr]">
+    <Modal onClose={onClose} wide size={preview ? "xl" : undefined}>
+      <div className={preview ? "grid lg:grid-cols-[1.35fr_.9fr]" : "grid md:grid-cols-[.8fr_1.2fr]"}>
+        {preview ? (
+          <div className="bg-black p-3 sm:p-4">
+            <CustomYouTubePlayer
+              videoId={preview.videoId}
+              startAt={preview.startAt}
+              subtitleText={preview.subtitleText}
+              subtitleOffsetMs={preview.subtitleOffsetMs}
+              title={preview.title || film.title}
+              episodeLabel={preview.episodeLabel}
+            />
+          </div>
+        ) : (
         <div className="relative min-h-72 md:min-h-[520px]">
           <img src={film.image} alt={film.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-[#151519]" />
@@ -41,6 +91,7 @@ export function FilmModal({
             </button>
           )}
         </div>
+        )}
         <div className="relative flex flex-col justify-center p-7 md:p-10">
           <div className="flex gap-2">
             {film.access === "free" && <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-400">Үнэгүй</span>}
