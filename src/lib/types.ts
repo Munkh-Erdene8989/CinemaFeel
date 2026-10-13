@@ -67,6 +67,18 @@ export type Episode = {
   duration: number;
 };
 
+export type Lesson = {
+  id: string;
+  title: string;
+  description: string;
+  cover: string;
+  hasVideo: boolean;
+  order: number;
+  ownerId: string;
+  ownerName: string;
+  createdAt: number;
+};
+
 export type SeriesWithEpisodes = Series & { episodeList: Episode[] };
 
 export type AppUser = {

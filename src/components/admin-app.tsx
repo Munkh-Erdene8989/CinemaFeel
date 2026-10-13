@@ -1,11 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { AdminRevenue, AdminSession, AppUser, Episode, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
+import type { AdminRevenue, AdminSession, AppUser, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
+import { KnowledgeAdmin } from "./knowledge-admin";
 import { AdminField, Icon, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
@@ -68,6 +69,7 @@ export function AdminApp() {
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [revenue, setRevenue] = useState<RevenueReport | null>(null);
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
+  const [lessons, setLessons] = useState<Lesson[]>([]);
   const [inviteCode, setInviteCode] = useState("");
   const [notice, setNotice] = useState("");
   const termsAccepted = useRef(false);
@@ -81,8 +83,8 @@ export function AdminApp() {
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
-    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Орлого", "card"]];
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
+    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"]];
 
   const notify = (message: string) => {
     setNotice(message);
@@ -91,10 +93,11 @@ export function AdminApp() {
 
   const reload = async () => {
     const sessionData = await adminFetch<AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean }>("/api/admin/session");
-    const [seriesData, revenueData, settingsData] = await Promise.all([
+    const [seriesData, revenueData, settingsData, lessonData] = await Promise.all([
       adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
       adminFetch<RevenueReport>("/api/admin/revenue"),
       adminFetch<{ settings: Settings }>("/api/admin/settings"),
+      adminFetch<{ lessons: Lesson[] }>("/api/admin/lessons"),
     ]);
     setSession(sessionData);
     setInviteCode(sessionData.inviteCode || "");
@@ -104,6 +107,7 @@ export function AdminApp() {
     setContent(seriesData.series);
     setRevenue(revenueData);
     setSettings(settingsData.settings);
+    setLessons(lessonData.lessons);
     if (sessionData.role !== "super") return;
     const [userData, paymentData, staffData] = await Promise.all([
       adminFetch<{ users: AppUser[] }>("/api/admin/users"),
@@ -201,6 +205,7 @@ export function AdminApp() {
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
           {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} inviteCode={inviteCode} notify={notify} />}
           {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} reload={reload} notify={notify} />}
+          {section === "Мэдлэг" && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={reload} notify={notify} />}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} />}
           {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} reload={reload} notify={notify} />}
           {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
