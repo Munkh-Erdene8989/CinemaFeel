@@ -119,6 +119,52 @@ function silenceYoutubeCaptions(player) {
   }
 }
 
+function fullscreenElement() {
+  return document.fullscreenElement || document.webkitFullscreenElement || document.mozFullScreenElement || null;
+}
+
+function requestFullscreen(element) {
+  const method = element.requestFullscreen || element.webkitRequestFullscreen || element.mozRequestFullScreen || element.msRequestFullscreen;
+  if (!method) return Promise.reject(new Error("unsupported"));
+  try {
+    const result = method.call(element);
+    return result && typeof result.then === "function" ? result : Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function exitFullscreen() {
+  const method = document.exitFullscreen || document.webkitExitFullscreen || document.mozCancelFullScreen || document.msExitFullscreen;
+  if (!method) return Promise.resolve();
+  try {
+    const result = method.call(document);
+    return result && typeof result.then === "function" ? result : Promise.resolve();
+  } catch (error) {
+    return Promise.reject(error);
+  }
+}
+
+function relaxOverflow(element) {
+  const changed = [];
+  let node = element?.parentElement;
+  while (node && node !== document.documentElement) {
+    const style = window.getComputedStyle(node);
+    if (style.overflow !== "visible" || style.overflowX !== "visible" || style.overflowY !== "visible") {
+      changed.push([node, node.style.overflow, node.style.overflowX, node.style.overflowY]);
+      node.style.overflow = "visible";
+    }
+    node = node.parentElement;
+  }
+  return () => {
+    changed.forEach(([target, overflow, overflowX, overflowY]) => {
+      target.style.overflow = overflow;
+      target.style.overflowX = overflowX;
+      target.style.overflowY = overflowY;
+    });
+  };
+}
+
 function injectStyles() {
   if (typeof document === "undefined") return;
   let style = document.querySelector("style[data-cyp-styles]");
@@ -342,6 +388,47 @@ function injectStyles() {
       background: #fff;
       cursor: pointer;
     }
+    .cyp-container.cyp-fs-fallback {
+      position: fixed !important;
+      z-index: 200 !important;
+      margin: 0 !important;
+      border-radius: 0 !important;
+      background: #000;
+      display: flex;
+      flex-direction: column;
+    }
+    @media (orientation: landscape) {
+      .cyp-container.cyp-fs-fallback {
+        inset: 0;
+        width: 100%;
+        height: 100%;
+        height: 100dvh;
+        padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+      }
+    }
+    @media (orientation: portrait) {
+      .cyp-container.cyp-fs-fallback {
+        top: 50%;
+        left: 50%;
+        width: 100vh;
+        width: 100dvh;
+        height: 100vw;
+        height: 100dvw;
+        transform: translate(-50%, -50%) rotate(90deg);
+      }
+    }
+    .cyp-container.cyp-fs-fallback .cyp-stage {
+      flex: 1 1 auto;
+      width: 100%;
+      min-height: 0;
+      aspect-ratio: auto;
+    }
+    .cyp-container.cyp-fs-fallback .cyp-controls {
+      flex: none;
+    }
+    .cyp-container.cyp-fs-fallback .cyp-row {
+      overflow-x: auto;
+    }
   `;
   document.head.appendChild(style);
 }
@@ -388,6 +475,7 @@ export default function CustomYouTubePlayer({
   const [volume, setVolume] = useState(100);
   const [muted, setMuted] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [pseudoFs, setPseudoFs] = useState(false);
   const [isSeeking, setIsSeeking] = useState(false);
   const [cues, setCues] = useState([]);
   const [subtitlesOn, setSubtitlesOn] = useState(true);
@@ -501,10 +589,47 @@ export default function CustomYouTubePlayer({
   }, [isPlaying, isSeeking]);
 
   useEffect(() => {
-    const onChange = () => setIsFullscreen(!!document.fullscreenElement);
+    const onChange = () => {
+      const active = Boolean(fullscreenElement());
+      setIsFullscreen(active);
+      if (active) setPseudoFs(false);
+    };
     document.addEventListener("fullscreenchange", onChange);
-    return () => document.removeEventListener("fullscreenchange", onChange);
+    document.addEventListener("webkitfullscreenchange", onChange);
+    return () => {
+      document.removeEventListener("fullscreenchange", onChange);
+      document.removeEventListener("webkitfullscreenchange", onChange);
+    };
   }, []);
+
+  useEffect(() => {
+    if (!pseudoFs) return undefined;
+    const restoreOverflow = relaxOverflow(containerRef.current);
+    const scrollY = window.scrollY;
+    const previous = {
+      overflow: document.body.style.overflow,
+      position: document.body.style.position,
+      top: document.body.style.top,
+      width: document.body.style.width,
+    };
+    document.body.style.overflow = "hidden";
+    document.body.style.position = "fixed";
+    document.body.style.top = `-${scrollY}px`;
+    document.body.style.width = "100%";
+    const onKey = (event) => {
+      if (event.key === "Escape") setPseudoFs(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      restoreOverflow();
+      document.body.style.overflow = previous.overflow;
+      document.body.style.position = previous.position;
+      document.body.style.top = previous.top;
+      document.body.style.width = previous.width;
+      window.scrollTo(0, scrollY);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [pseudoFs]);
 
   const togglePlay = () => {
     if (!playerRef.current) return;
@@ -556,9 +681,23 @@ export default function CustomYouTubePlayer({
   };
 
   const toggleFullscreen = () => {
-    if (!containerRef.current) return;
-    if (!document.fullscreenElement) containerRef.current.requestFullscreen?.();
-    else document.exitFullscreen?.();
+    if (pseudoFs) {
+      setPseudoFs(false);
+      return;
+    }
+    if (fullscreenElement()) {
+      exitFullscreen();
+      return;
+    }
+    const el = containerRef.current;
+    if (!el) return;
+    requestFullscreen(el)
+      .then(() => {
+        window.setTimeout(() => {
+          if (!fullscreenElement()) setPseudoFs(true);
+        }, 350);
+      })
+      .catch(() => setPseudoFs(true));
   };
 
   const pct = duration ? (currentTime / duration) * 100 : 0;
@@ -568,7 +707,7 @@ export default function CustomYouTubePlayer({
   const volumeLevel = muted ? 0 : volume;
 
   return (
-    <div ref={containerRef} className="cyp-container">
+    <div ref={containerRef} className={`cyp-container${pseudoFs ? " cyp-fs-fallback" : ""}`}>
       {(heading || onBack || onEpisodes) && (
         <div className="cyp-top">
           <div className="cyp-top-title">
@@ -687,7 +826,7 @@ export default function CustomYouTubePlayer({
           )}
           <button type="button" onClick={toggleFullscreen} aria-label="Дэлгэц дүүргэх">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
-              {isFullscreen ? <path d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4" /> : <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />}
+              {isFullscreen || pseudoFs ? <path d="M9 9H5V5M15 9h4V5M9 15H5v4M15 15h4v4" /> : <path d="M8 3H3v5M16 3h5v5M8 21H3v-5M16 21h5v-5" />}
             </svg>
           </button>
         </div>

@@ -145,7 +145,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
       {!youtube && <button onClick={() => film && openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film?.title || "Кино"}</button>}
       <div className={youtube ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
-        <div className={youtube ? "w-full overflow-hidden rounded-2xl bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
+        <div className={youtube ? "w-full bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
           {youtube ? (
             <CustomYouTubePlayer
               key={current?.id}
