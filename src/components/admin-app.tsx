@@ -417,18 +417,92 @@ function TablePager({ pager }: { pager: ReturnType<typeof usePaged<unknown>> }) 
   );
 }
 
+const CHART_DAY = 24 * 60 * 60 * 1000;
+
+function startOfLocalDay(time: number) {
+  const date = new Date(time);
+  date.setHours(0, 0, 0, 0);
+  return date.getTime();
+}
+
+function chartMoney(amount: number) {
+  return `₮${Math.round(amount).toLocaleString("mn-MN")}`;
+}
+
+function salesInRange(payments: Payment[], start: number, end: number) {
+  let amount = 0;
+  let count = 0;
+  for (const payment of payments) {
+    if (payment.createdAt < start || payment.createdAt >= end) continue;
+    amount += payment.amount;
+    count += 1;
+  }
+  return { amount, count };
+}
+
+function daySales(payments: Payment[], since: number, now: number) {
+  const first = startOfLocalDay(since);
+  const last = startOfLocalDay(now);
+  const count = Math.round((last - first) / CHART_DAY) + 1;
+  return Array.from({ length: count }, (_, index) => {
+    const start = first + index * CHART_DAY;
+    const date = new Date(start);
+    const label = `${String(date.getMonth() + 1).padStart(2, "0")}.${String(date.getDate()).padStart(2, "0")}`;
+    return { key: String(start), label, start, ...salesInRange(payments, start, start + CHART_DAY) };
+  });
+}
+
+function hourSales(payments: Payment[], dayStart: number) {
+  const hour = 60 * 60 * 1000;
+  return Array.from({ length: 24 }, (_, index) => {
+    const start = dayStart + index * hour;
+    return { key: String(start), label: `${String(index).padStart(2, "0")}:00`, start, ...salesInRange(payments, start, start + hour) };
+  });
+}
+
+function SalesChart({ title, hint, total, buckets, labelEvery }: { title: string; hint: string; total: number; buckets: { key: string; label: string; amount: number; count: number }[]; labelEvery: number }) {
+  const max = Math.max(...buckets.map((bucket) => bucket.amount), 1);
+  const sales = buckets.reduce((sum, bucket) => sum + bucket.count, 0);
+  return (
+    <div>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h3 className="text-sm font-black">{title}</h3>
+          <p className="mt-1 text-xs text-zinc-600">{hint}</p>
+        </div>
+        <div className="text-right">
+          <p className="text-sm font-black">{chartMoney(total)}</p>
+          <p className="mt-1 text-[10px] text-zinc-600">{sales} борлуулалт</p>
+        </div>
+      </div>
+      <div className="mt-2 overflow-x-auto px-2 pt-9">
+        <div className="flex h-40 items-end gap-1" style={{ minWidth: Math.max(buckets.length * 22, 280) }}>
+          {buckets.map((bucket, index) => (
+            <div key={bucket.key} className="group relative flex h-full min-w-0 flex-1 flex-col items-center justify-end">
+              <div className="pointer-events-none absolute bottom-[calc(100%+4px)] left-1/2 z-10 hidden -translate-x-1/2 whitespace-nowrap rounded-lg border border-white/10 bg-[#0c0c0f] px-2 py-1 text-[10px] font-bold text-white group-hover:block">
+                {bucket.label} · {chartMoney(bucket.amount)} · {bucket.count}
+              </div>
+              <div className="w-full rounded-t-md bg-gradient-to-t from-[#ff3d56]/25 to-[#ff536a]" style={{ height: `${bucket.amount ? Math.max(6, (bucket.amount / max) * 100) : 2}%`, opacity: bucket.amount ? 1 : 0.35 }} title={`${bucket.label} · ${chartMoney(bucket.amount)} · ${bucket.count} борлуулалт`} />
+              <span className={`mt-2 h-3 text-[9px] text-zinc-600 ${index % labelEvery === 0 ? "" : "invisible"}`}>{bucket.label}</span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[] }) {
   const [range, setRange] = useState("7");
+  const [hourDay, setHourDay] = useState(() => startOfLocalDay(Date.now()));
   const days = Number(range);
-  const since = Date.now() - days * 24 * 60 * 60 * 1000;
+  const now = Date.now();
+  const since = now - days * CHART_DAY;
   const recent = payments.filter((payment) => payment.createdAt >= since && payment.status === "Амжилттай");
   const revenue = recent.reduce((sum, payment) => sum + payment.amount, 0);
-  const buckets = Array.from({ length: 7 }, (_, index) => {
-    const start = since + ((days / 7) * index * 24 * 60 * 60 * 1000);
-    const end = since + ((days / 7) * (index + 1) * 24 * 60 * 60 * 1000);
-    return recent.filter((payment) => payment.createdAt >= start && payment.createdAt < end).reduce((sum, payment) => sum + payment.amount, 0);
-  });
-  const max = Math.max(...buckets, 1);
+  const daysChart = daySales(recent, since, now);
+  const selectedDay = daysChart.some((bucket) => bucket.start === hourDay) ? hourDay : (daysChart.at(-1)?.start ?? startOfLocalDay(now));
+  const hoursChart = hourSales(recent, selectedDay);
   const monthly = users
     .filter((user) => user.plan === "Plus")
     .slice()
@@ -474,20 +548,21 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
       </div>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.6fr_1fr]">
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
-          <div className="flex justify-between">
+          <div className="flex flex-wrap items-start justify-between gap-3">
             <div>
-              <h2 className="font-black">Орлогын үзүүлэлт</h2>
-              <p className="mt-1 text-xs text-zinc-600">Сүүлийн {range} хоног</p>
+              <h2 className="font-black">Борлуулалтын орлого</h2>
+              <p className="mt-1 text-xs text-zinc-600">Сүүлийн {range} хоногийн амжилттай гүйлгээ</p>
             </div>
-            <span className="text-xs text-zinc-500">₮{Math.round(revenue).toLocaleString("mn-MN")}</span>
+            <label className="flex items-center gap-2 text-xs font-bold text-zinc-500">
+              Цагийн өдөр
+              <select value={selectedDay} onChange={(event) => setHourDay(Number(event.target.value))} className="rounded-lg border border-white/10 bg-[#0c0c0f] px-3 py-2 text-xs font-bold text-white outline-none">
+                {daysChart.map((bucket) => <option key={bucket.key} value={bucket.start}>{formatDate(bucket.start)}</option>)}
+              </select>
+            </label>
           </div>
-          <div className="mt-8 flex h-52 items-end gap-3">
-            {buckets.map((amount, index) => (
-              <div key={index} className="flex flex-1 flex-col items-center gap-2">
-                <div className="w-full rounded-t-md bg-gradient-to-t from-[#ff3d56]/30 to-[#ff536a]" style={{ height: `${Math.max(8, (amount / max) * 100)}%` }} />
-                <span className="text-[9px] text-zinc-700">{index + 1}</span>
-              </div>
-            ))}
+          <div className="mt-6 space-y-8">
+            <SalesChart title="Өдрөөр" hint="Өдөр бүрийн орлого" total={daysChart.reduce((sum, bucket) => sum + bucket.amount, 0)} buckets={daysChart} labelEvery={daysChart.length > 16 ? Math.ceil(daysChart.length / 8) : 1} />
+            <SalesChart title="Цагаар" hint={`${formatDate(selectedDay)} өдрийн цаг бүр`} total={hoursChart.reduce((sum, bucket) => sum + bucket.amount, 0)} buckets={hoursChart} labelEvery={3} />
           </div>
         </div>
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
