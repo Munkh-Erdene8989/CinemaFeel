@@ -200,7 +200,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : "home";
+  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : pathname.startsWith("/terms") ? "terms" : "home";
 
   return (
     <SiteContext.Provider value={value}>
@@ -236,7 +236,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
           <div className="flex flex-col justify-between gap-3 sm:flex-row">
             <p>© {new Date().getFullYear()} CinemaFeel. Богино түүх, том мэдрэмж.</p>
             <div className="flex gap-5">
-              <span>Үйлчилгээний нөхцөл</span>
+              <a href="/terms" className={pathname === "/terms" ? "text-zinc-300" : "hover:text-white"}>Үйлчилгээний нөхцөл</a>
               <a href={`mailto:${settings.email}`}>Тусламж</a>
             </div>
           </div>
