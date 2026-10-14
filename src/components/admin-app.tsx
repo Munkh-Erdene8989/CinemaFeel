@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
-import { CREATOR_FEE, defaultSettings } from "@/lib/types";
+import { CREATOR_FEE, defaultSettings, SUPER_ADMIN_ID } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
+import { buildRevenue, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
 import { KnowledgeAdmin } from "./knowledge-admin";
@@ -99,7 +100,8 @@ export function AdminApp() {
   const [users, setUsers] = useState<AppUser[]>([]);
   const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
-  const [revenue, setRevenue] = useState<RevenueReport | null>(null);
+  const [creatorRevenue, setCreatorRevenue] = useState<RevenueReport | null>(null);
+  const [revenueDays, setRevenueDays] = useState<RevenueWindow>(30);
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [inviteCode, setInviteCode] = useState("");
@@ -123,33 +125,74 @@ export function AdminApp() {
     window.setTimeout(() => setNotice(""), 2800);
   };
 
+  const loadCreatorRevenue = async (days: RevenueWindow) => {
+    const report = await adminFetch<RevenueReport>(`/api/admin/revenue?days=${days}`);
+    setCreatorRevenue(report);
+  };
+
   const reload = async () => {
     const sessionData = await adminFetch<AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean }>("/api/admin/session");
-    const [seriesData, revenueData, settingsData, lessonData] = await Promise.all([
+    const creator = sessionData.role === "admin";
+    const [seriesData, settingsData, lessonData] = await Promise.all([
       adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
-      adminFetch<RevenueReport>("/api/admin/revenue"),
       adminFetch<{ settings: Settings }>("/api/admin/settings"),
       adminFetch<{ lessons: Lesson[] }>("/api/admin/lessons"),
+      creator ? loadCreatorRevenue(revenueDays) : Promise.resolve(),
     ]);
     setSession(sessionData);
     setInviteCode(sessionData.inviteCode || "");
-    const creator = sessionData.role === "admin";
     if (!termsAccepted.current) setTermsOpen(creator && sessionData.termsSeen !== true);
     if (!guideDone.current && creator && sessionData.termsSeen === true && sessionData.guideSeen !== true) setGuideOpen(true);
     setContent(seriesData.series);
-    setRevenue(revenueData);
     setSettings(settingsData.settings);
     setLessons(lessonData.lessons);
-    if (sessionData.role !== "super") return;
-    const [userData, paymentData, staffData] = await Promise.all([
-      adminFetch<{ users: AppUser[] }>("/api/admin/users"),
-      adminFetch<{ payments: Payment[] }>("/api/admin/payments"),
-      adminFetch<{ admins: StaffAdmin[] }>("/api/admin/staff"),
-    ]);
-    setUsers(userData.users);
-    setPayments(paymentData.payments);
-    setStaff(staffData.admins);
+    if (!creator) {
+      const [userData, paymentData, staffData] = await Promise.all([
+        adminFetch<{ users: AppUser[] }>("/api/admin/users"),
+        adminFetch<{ payments: Payment[] }>("/api/admin/payments"),
+        adminFetch<{ admins: StaffAdmin[] }>("/api/admin/staff"),
+      ]);
+      setUsers(userData.users);
+      setPayments(paymentData.payments);
+      setStaff(staffData.admins);
+    }
   };
+
+  const refreshSeries = async () => {
+    const seriesData = await adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series");
+    setContent(seriesData.series);
+    if (session?.role === "admin") await loadCreatorRevenue(revenueDays);
+  };
+
+  const refreshLessons = async () => {
+    const lessonData = await adminFetch<{ lessons: Lesson[] }>("/api/admin/lessons");
+    setLessons(lessonData.lessons);
+  };
+
+  const selectRevenueDays = async (days: RevenueWindow) => {
+    const previous = revenueDays;
+    setRevenueDays(days);
+    if (session?.role === "super") return;
+    try {
+      await loadCreatorRevenue(days);
+    } catch (error) {
+      setRevenueDays(previous);
+      notify(error instanceof Error ? error.message : "Орлогыг шүүж чадсангүй.");
+    }
+  };
+
+  const superRevenue = useMemo(() => {
+    if (session?.role !== "super") return null;
+    const names = new Map<string, string>([[SUPER_ADMIN_ID, "Super admin"]]);
+    const invitedBy = new Map<string, string>();
+    for (const admin of staff) {
+      names.set(admin.id, admin.name || admin.username);
+      if (admin.invitedById) invitedBy.set(admin.id, admin.invitedById);
+    }
+    const { since } = revenueWindow(revenueDays);
+    return buildRevenue(content, payments.filter((payment) => payment.createdAt >= since), names, invitedBy);
+  }, [session?.role, staff, content, payments, revenueDays]);
+  const revenue = session?.role === "super" ? superRevenue : creatorRevenue;
 
   const acceptTerms = async () => {
     setTermsBusy(true);
@@ -197,8 +240,15 @@ export function AdminApp() {
   }, []);
 
   const guiding = guideOpen && !termsOpen;
+  const [pageSize, setPageSizeState] = useState<AdminPageSize>(20);
+  useEffect(() => setPageSizeState(readAdminPageSize()), []);
+  const setPageSize = (size: AdminPageSize) => {
+    setPageSizeState(size);
+    window.localStorage.setItem(adminPageSizeKey, String(size));
+  };
 
   return (
+    <AdminPageSizeContext.Provider value={{ pageSize, setPageSize }}>
     <div className="min-h-screen bg-[#0c0c0f] text-white">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/[.07] bg-[#101014] p-5 lg:block">
         <Logo href="/" />
@@ -235,14 +285,23 @@ export function AdminApp() {
             ))}
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
-          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} inviteCode={inviteCode} notify={notify} />}
-          {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} reload={reload} notify={notify} />}
-          {section === "Мэдлэг" && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={reload} notify={notify} />}
-          {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} />}
-          {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} reload={reload} notify={notify} />}
-          {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} reload={reload} notify={notify} />}
-          {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} reload={reload} notify={notify} />}
-          {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} reload={reload} notify={notify} />}
+          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} days={revenueDays} inviteCode={inviteCode} notify={notify} />}
+          {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} refreshSeries={refreshSeries} onGenres={(genres) => setSettings((current) => ({ ...current, genres }))} onStatus={async (film) => {
+            const status = film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн";
+            const saved = await adminFetch<ReleaseNotice>(`/api/admin/series/${film.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
+            setContent((current) => current.map((item) => item.id === film.id ? { ...item, status } : item));
+            return saved;
+          }} notify={notify} />}
+          {section === "Мэдлэг" && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
+          {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
+          {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} payments={payments} content={content} onUsers={setUsers} notify={notify} />}
+          {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} notify={notify} onRefunded={(payment) => {
+            setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, status: "Буцаагдсан" } : item));
+            if (payment.mode === "subscription" || payment.mode === "weekly") setUsers((current) => current.map((user) => user.uid === payment.uid ? { ...user, plan: "Үндсэн", subscriptionExpiresAt: Date.now() } : user));
+            if (payment.mode === "creator" && payment.creatorId) setStaff((current) => current.map((admin) => admin.id === payment.creatorId ? { ...admin, active: false, paid: false } : admin));
+          }} />}
+          {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} notify={notify} />}
+          {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} onSaved={setSettings} notify={notify} />}
         </div>
       </main>
       {termsOpen && <CreatorTermsModal busy={termsBusy} error={termsError} onAccept={acceptTerms} />}
@@ -254,6 +313,7 @@ export function AdminApp() {
         </div>
       )}
     </div>
+    </AdminPageSizeContext.Provider>
   );
 }
 
@@ -265,6 +325,96 @@ function remainingTone(days: number) {
   if (days <= 0) return "text-zinc-500";
   if (days <= 3) return "text-amber-400";
   return "text-emerald-400";
+}
+
+const adminPageSizes = [10, 20, 50, 100] as const;
+type AdminPageSize = (typeof adminPageSizes)[number];
+const adminPageSizeKey = "cinemafeel-admin-page-size";
+
+function readAdminPageSize(): AdminPageSize {
+  if (typeof window === "undefined") return 20;
+  const stored = Number(window.localStorage.getItem(adminPageSizeKey));
+  return adminPageSizes.includes(stored as AdminPageSize) ? (stored as AdminPageSize) : 20;
+}
+
+const AdminPageSizeContext = createContext<{ pageSize: AdminPageSize; setPageSize: (size: AdminPageSize) => void }>({
+  pageSize: 20,
+  setPageSize: () => undefined,
+});
+
+function usePaged<T>(items: T[], resetKey = "") {
+  const { pageSize, setPageSize } = useContext(AdminPageSizeContext);
+  const [page, setPage] = useState(1);
+  const resetToken = `${resetKey}|${pageSize}`;
+  const [token, setToken] = useState(resetToken);
+  let currentPage = page;
+  if (token !== resetToken) {
+    setToken(resetToken);
+    currentPage = 1;
+    if (page !== 1) setPage(1);
+  }
+  const pages = Math.max(1, Math.ceil(items.length / pageSize));
+  const current = Math.min(currentPage, pages);
+  const start = (current - 1) * pageSize;
+  return {
+    rows: items.slice(start, start + pageSize),
+    page: current,
+    pages,
+    pageSize,
+    setPage,
+    setPageSize,
+    total: items.length,
+    from: items.length ? start + 1 : 0,
+    to: Math.min(start + pageSize, items.length),
+  };
+}
+
+function pageWindow(page: number, pages: number) {
+  const marks = [1, pages, page - 1, page, page + 1].filter((item, index, list) => item >= 1 && item <= pages && list.indexOf(item) === index).sort((a, b) => a - b);
+  const window: Array<number | "gap"> = [];
+  marks.forEach((item, index) => {
+    if (index > 0 && item - marks[index - 1] > 1) window.push("gap");
+    window.push(item);
+  });
+  return window;
+}
+
+function PageSizeSetting() {
+  const { pageSize, setPageSize } = useContext(AdminPageSizeContext);
+  return (
+    <div className="border-t border-white/[.07] pt-5">
+      <AdminField label="ХУУДСАНД ХАРУУЛАХ МӨР">
+        <select value={pageSize} onChange={(event) => setPageSize(Number(event.target.value) as AdminPageSize)} className="admin-input">
+          {adminPageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
+        </select>
+      </AdminField>
+      <p className="mt-2 text-xs text-zinc-600">Хэрэглэгч, төлбөр, контент, орлого болон бүтээгчийн жагсаалтад нэг хуудсанд гарах мөр. Сонголт энэ хөтөч дээр хадгалагдана.</p>
+    </div>
+  );
+}
+
+function TablePager({ pager }: { pager: ReturnType<typeof usePaged<unknown>> }) {
+  if (!pager.total) return null;
+  return (
+    <div className="mt-4 flex flex-wrap items-center justify-between gap-3">
+      <p className="text-xs text-zinc-500">{pager.from}–{pager.to} / {pager.total.toLocaleString("mn-MN")}</p>
+      <div className="flex flex-wrap items-center gap-2">
+        <label className="flex items-center gap-2 text-xs font-bold text-zinc-500">
+          Хуудсанд
+          <select value={pager.pageSize} onChange={(event) => pager.setPageSize(Number(event.target.value) as AdminPageSize)} className="rounded-lg border border-white/10 bg-[#141419] px-2 py-2 text-white outline-none">
+            {adminPageSizes.map((size) => <option key={size} value={size}>{size}</option>)}
+          </select>
+        </label>
+        <button type="button" disabled={pager.page <= 1} onClick={() => pager.setPage(pager.page - 1)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 disabled:opacity-30">Өмнөх</button>
+        {pageWindow(pager.page, pager.pages).map((item, index) => item === "gap" ? (
+          <span key={`gap-${index}`} className="px-1 text-xs text-zinc-600">…</span>
+        ) : (
+          <button key={item} type="button" onClick={() => pager.setPage(item)} className={`grid h-9 min-w-9 place-items-center rounded-lg px-2 text-xs font-bold ${item === pager.page ? "bg-white text-black" : "border border-white/10 text-zinc-400"}`}>{item}</button>
+        ))}
+        <button type="button" disabled={pager.page >= pager.pages} onClick={() => pager.setPage(pager.page + 1)} className="rounded-lg border border-white/10 px-3 py-2 text-xs font-bold text-zinc-300 disabled:opacity-30">Дараах</button>
+      </div>
+    </div>
+  );
 }
 
 function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[] }) {
@@ -290,6 +440,7 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
       return (b.subscriptionExpiresAt ?? 0) - (a.subscriptionExpiresAt ?? 0);
     });
   const activeMonthly = users.filter((user) => subscriptionActive(user)).length;
+  const monthlyPage = usePaged(monthly, range);
   const stats = [
     ["Нийт орлого", `₮${Math.round(revenue).toLocaleString("mn-MN")}`, `${recent.length} гүйлгээ`, "chart"],
     ["Идэвхтэй эрх", activeMonthly.toString(), `${users.length} хэрэглэгч`, "users"],
@@ -365,8 +516,8 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
           </div>
           <span className="text-xs text-zinc-500">{activeMonthly} идэвхтэй</span>
         </div>
-        <div className="mt-5 max-h-80 divide-y divide-white/[.05] overflow-y-auto">
-          {monthly.map((user) => {
+        <div className="mt-5 divide-y divide-white/[.05]">
+          {monthlyPage.rows.map((user) => {
             const left = daysRemaining(user.subscriptionExpiresAt);
             return (
               <div key={user.uid} className="flex items-center gap-4 py-3">
@@ -380,12 +531,13 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
           })}
           {!monthly.length && <p className="text-sm text-zinc-600">Сарын эрхтэй хэрэглэгч алга.</p>}
         </div>
+        <TablePager pager={monthlyPage} />
       </div>
     </>
   );
 }
 
-function AdminHome({ content, mine, inviteCode, notify }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue; inviteCode: string; notify: (message: string) => void }) {
+function AdminHome({ content, mine, days, inviteCode, notify }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue; days: RevenueWindow; inviteCode: string; notify: (message: string) => void }) {
   const referrals = mine?.referrals ?? [];
   const stats = [
     ["Миний орлого", formatMoney(mine?.total ?? 0), "шууд 80% + сарын хувь + урилга", "card"],
@@ -396,7 +548,7 @@ function AdminHome({ content, mine, inviteCode, notify }: { content: SeriesWithE
   return (
     <>
       <h2 className="text-2xl font-black">Миний тойм</h2>
-      <p className="mt-1 text-sm text-zinc-600">Шууд борлуулалтын 80% танд, 20% платформд. Сарын эрхийн 50%-ийг үзэлтээр хуваана. {content.length} контент.</p>
+      <p className="mt-1 text-sm text-zinc-600">Сүүлийн {days} хоногийн орлого. Шууд борлуулалтын 80% танд, 20% платформд. Сарын эрхийн 50%-ийг нийт үзэлтээр хуваана. {content.length} контент.</p>
       {inviteCode && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-4">
           <div>
@@ -441,7 +593,7 @@ function AdminHome({ content, mine, inviteCode, notify }: { content: SeriesWithE
   );
 }
 
-function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, notify }: { content: SeriesWithEpisodes[]; genres: string[]; showOwner: boolean; canManageGenres: boolean; reload: () => Promise<void>; notify: (message: string) => void }) {
+function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeries, onGenres, onStatus, notify }: { content: SeriesWithEpisodes[]; genres: string[]; showOwner: boolean; canManageGenres: boolean; refreshSeries: () => Promise<void>; onGenres: (genres: string[]) => void; onStatus: (film: SeriesWithEpisodes) => Promise<ReleaseNotice>; notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
   const [editing, setEditing] = useState<SeriesWithEpisodes | "new" | null>(null);
@@ -451,9 +603,9 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   const addGenre = async () => {
     setGenreError("");
     try {
-      const saved = await adminFetch<{ name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: genreName }) });
+      const saved = await adminFetch<{ genres: string[]; name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: genreName }) });
       setGenreName("");
-      await reload();
+      onGenres(saved.genres);
       notify(saved.created ? "Төрөл нэмэгдлээ." : "Энэ төрөл аль хэдийн байна.");
     } catch (cause) {
       setGenreError(cause instanceof Error ? cause.message : "Төрөл нэмэгдсэнгүй.");
@@ -462,25 +614,26 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   const removeGenre = async (name: string) => {
     setGenreError("");
     try {
-      await adminFetch("/api/admin/genres", { method: "DELETE", body: JSON.stringify({ name }) });
-      await reload();
+      const saved = await adminFetch<{ genres: string[] }>("/api/admin/genres", { method: "DELETE", body: JSON.stringify({ name }) });
+      onGenres(saved.genres);
       notify("Төрөл хасагдлаа.");
     } catch (cause) {
       setGenreError(cause instanceof Error ? cause.message : "Төрөл хасагдсангүй.");
     }
   };
   const visible = content.filter((film) => film.title.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || film.status === filter));
+  const list = usePaged(visible, `${query}|${filter}`);
   const toggleStatus = async (film: SeriesWithEpisodes) => {
-    const saved = await adminFetch<ReleaseNotice>(`/api/admin/series/${film.id}`, {
-      method: "PATCH",
-      body: JSON.stringify({ status: film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн" }),
-    });
-    await reload();
-    const email = saved.notified
-      ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү имэйл илгээлээ.`
-      : saved.notifyError || saved.notifyPending || "";
-    const extra = [email, telegramNote(saved)].filter(Boolean).join(" ");
-    notify(extra ? `Контентын төлөв шинэчлэгдлээ. ${extra}` : "Контентын төлөв шинэчлэгдлээ.");
+    try {
+      const saved = await onStatus(film);
+      const email = saved.notified
+        ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү имэйл илгээлээ.`
+        : saved.notifyError || saved.notifyPending || "";
+      const extra = [email, telegramNote(saved)].filter(Boolean).join(" ");
+      notify(extra ? `Контентын төлөв шинэчлэгдлээ. ${extra}` : "Контентын төлөв шинэчлэгдлээ.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Төлөв шинэчлэгдсэнгүй.");
+    }
   };
   return (
     <div>
@@ -535,7 +688,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
             <tr>{["КОНТЕНТ", "ТӨРӨЛ", ...(showOwner ? ["БҮТЭЭГЧ"] : []), "ҮНЭ", "ҮЗЭЛТ", "1 ҮЗЭЛТ", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4 font-bold">{heading}</th>)}</tr>
           </thead>
           <tbody>
-            {visible.map((film) => (
+            {list.rows.map((film) => (
               <tr key={film.id} className="border-b border-white/[.05] last:border-0">
                 <td className="px-5 py-3">
                   <div className="flex items-center gap-3">
@@ -575,6 +728,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
         </table>
         {!visible.length && <p className="py-12 text-center text-sm text-zinc-600">Илэрц олдсонгүй.</p>}
       </div>
+      <TablePager pager={list} />
       {youtubeOpen && (
         <YoutubeEpisodeForm
           content={content}
@@ -582,7 +736,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
           onClose={() => setYoutubeOpen(false)}
           onSaved={async (message) => {
             setYoutubeOpen(false);
-            await reload();
+            await refreshSeries();
             notify(message);
           }}
         />
@@ -592,14 +746,11 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
           film={editing === "new" ? null : editing}
           genres={genres}
           canAddGenre={canManageGenres}
-          onGenreAdded={async (name) => {
-            await reload();
-            notify(`${name} төрөл нэмэгдлээ.`);
-          }}
+          onGenres={onGenres}
           onClose={() => setEditing(null)}
           onSaved={async (message) => {
             setEditing(null);
-            await reload();
+            await refreshSeries();
             notify(message);
           }}
         />
@@ -608,7 +759,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, reload, not
   );
 }
 
-function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSaved }: { film: SeriesWithEpisodes | null; genres: string[]; canAddGenre: boolean; onGenreAdded: (name: string) => Promise<void>; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
+function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }: { film: SeriesWithEpisodes | null; genres: string[]; canAddGenre: boolean; onGenres: (genres: string[]) => void; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
   const [form, setForm] = useState({
     title: film?.title ?? "",
     genre: film?.genre ?? genres[0] ?? defaultSettings.genres[0],
@@ -754,12 +905,12 @@ function ContentEditor({ film, genres, canAddGenre, onGenreAdded, onClose, onSav
                     setError("");
                     setBusy("Төрөл нэмж байна...");
                     try {
-                      const saved = await adminFetch<{ name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: newGenre }) });
+                      const saved = await adminFetch<{ genres: string[]; name: string; created: boolean }>("/api/admin/genres", { method: "POST", body: JSON.stringify({ name: newGenre }) });
                       update("genre", saved.name);
                       setNewGenre("");
                       setBusy("");
-                      if (saved.created) await onGenreAdded(saved.name);
-                      else setError("Энэ төрөл аль хэдийн байна.");
+                      onGenres(saved.genres);
+                      if (!saved.created) setError("Энэ төрөл аль хэдийн байна.");
                     } catch (cause) {
                       setBusy("");
                       setError(cause instanceof Error ? cause.message : "Төрөл нэмэгдсэнгүй.");
@@ -891,30 +1042,92 @@ function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string, onP
   );
 }
 
-function UsersAdmin({ users, reload, notify }: { users: AppUser[]; reload: () => Promise<void>; notify: (message: string) => void }) {
+function DetailFact({ label, children }: { label: string; children: ReactNode }) {
+  const empty = children === "" || children === null || children === undefined;
+  return (
+    <div className="rounded-xl border border-white/[.06] bg-black/20 px-4 py-3">
+      <p className="text-[10px] font-black uppercase tracking-[.14em] text-zinc-600">{label}</p>
+      <div className="mt-1.5 break-words text-sm font-bold text-zinc-100">{empty ? "—" : children}</div>
+    </div>
+  );
+}
+
+function DetailHeading({ children }: { children: ReactNode }) {
+  return <h3 className="mt-8 text-xs font-black uppercase tracking-[.16em] text-zinc-500">{children}</h3>;
+}
+
+function userPayments(user: AppUser, payments: Payment[]) {
+  const email = user.email?.toLowerCase() || "";
+  return payments.filter((payment) => payment.uid === user.uid || (email && payment.email.toLowerCase() === email && payment.mode !== "creator"));
+}
+
+function ConfirmModal({ title, body, confirmLabel, busy, onCancel, onConfirm }: { title: string; body: string; confirmLabel: string; busy?: boolean; onCancel: () => void; onConfirm: () => void }) {
+  return (
+    <Modal onClose={onCancel} priority>
+      <div className="p-8">
+        <h2 className="pr-8 text-2xl font-black">{title}</h2>
+        <p className="mt-3 text-sm leading-6 text-zinc-400">{body}</p>
+        <div className="mt-6 flex gap-3">
+          <button type="button" onClick={onCancel} className="h-12 flex-1 rounded-xl border border-white/10 text-xs font-bold text-zinc-300">Болих</button>
+          <button type="button" disabled={busy} onClick={onConfirm} className="h-12 flex-1 rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">{confirmLabel}</button>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function UsersAdmin({ users, payments, content, onUsers, notify }: { users: AppUser[]; payments: Payment[]; content: SeriesWithEpisodes[]; onUsers: (update: (users: AppUser[]) => AppUser[]) => void; notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
   const [adding, setAdding] = useState(false);
   const [email, setEmail] = useState("");
-  const visible = users.filter((user) => `${user.email || ""} ${user.phone || ""}`.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter));
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingPause, setPendingPause] = useState<AppUser | null>(null);
+  const [busy, setBusy] = useState(false);
+  const visible = users.filter((user) => `${user.displayName || ""} ${user.email || ""} ${user.phone || ""}`.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter));
+  const list = usePaged(visible, `${query}|${filter}`);
+  const selected = users.find((user) => user.uid === selectedId) ?? null;
   const updateUser = async (uid: string, patch: Partial<AppUser>) => {
-    await adminFetch(`/api/admin/users/${uid}`, { method: "PATCH", body: JSON.stringify(patch) });
-    await reload();
-    notify("Хэрэглэгчийн мэдээлэл шинэчлэгдлээ.");
+    try {
+      const saved = await adminFetch<{ ok: boolean } & Partial<AppUser>>(`/api/admin/users/${uid}`, { method: "PATCH", body: JSON.stringify(patch) });
+      const { ok: _ok, ...fields } = saved;
+      onUsers((current) => current.map((user) => user.uid === uid ? { ...user, ...fields } : user));
+      notify("Хэрэглэгчийн мэдээлэл шинэчлэгдлээ.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Хэрэглэгч шинэчлэгдсэнгүй.");
+    }
+  };
+  const changeStatus = (user: AppUser) => {
+    if (user.status === "Идэвхтэй") setPendingPause(user);
+    else void updateUser(user.uid, { status: "Идэвхтэй" });
+  };
+  const addUser = async () => {
+    setBusy(true);
+    try {
+      const saved = await adminFetch<{ user: AppUser }>("/api/admin/users", { method: "POST", body: JSON.stringify({ email }) });
+      onUsers((current) => [saved.user, ...current.filter((user) => user.uid !== saved.user.uid)]);
+      setAdding(false);
+      setEmail("");
+      notify("Хэрэглэгч нэмэгдлээ.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Хэрэглэгч нэмэгдсэнгүй.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div>
       <div className="flex flex-wrap justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black">Хэрэглэгчид</h2>
-          <p className="mt-1 text-sm text-zinc-600">Нийт {users.length.toLocaleString("mn-MN")} бүртгэлтэй хэрэглэгч</p>
+          <p className="mt-1 text-sm text-zinc-600">Нийт {users.length.toLocaleString("mn-MN")} бүртгэлтэй хэрэглэгч. Нэр дээр дарж дэлгэрэнгүй харна.</p>
         </div>
         <button onClick={() => setAdding(true)} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black"><Icon name="plus" className="h-4 w-4" />Хэрэглэгч нэмэх</button>
       </div>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <label className="flex h-11 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-[#141419] px-4">
           <Icon name="search" className="h-4 w-4 text-zinc-600" />
-          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Email эсвэл утас..." className="w-full bg-transparent text-sm outline-none" />
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Нэр, email эсвэл утас..." className="w-full bg-transparent text-sm outline-none" />
         </label>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#141419] px-4 text-xs font-bold"><option>Бүгд</option><option>Plus</option><option>Үндсэн</option></select>
       </div>
@@ -922,41 +1135,149 @@ function UsersAdmin({ users, reload, notify }: { users: AppUser[]; reload: () =>
         <table className="w-full min-w-[920px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ЭРХ", "ҮЛДСЭН ХОНОГ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
           <tbody>
-            {visible.map((user) => {
+            {list.rows.map((user) => {
               const left = user.plan === "Plus" ? daysRemaining(user.subscriptionExpiresAt) : null;
+              const contact = user.email || (user.phone ? formatPhone(user.phone) : "");
               return (
               <tr key={user.uid} className="border-b border-white/[.05] last:border-0">
-                <td className="px-5 py-5 font-bold">{user.email || (user.phone ? formatPhone(user.phone) : "—")}</td>
+                <td className="px-5 py-5">
+                  <button onClick={() => setSelectedId(user.uid)} className="text-left hover:underline">
+                    <span className="font-bold">{user.displayName || contact || "—"}</span>
+                    {user.displayName && contact && <small className="mt-1 block font-medium text-zinc-600">{contact}</small>}
+                  </button>
+                </td>
                 <td className="px-5">
                   <select value={user.plan} onChange={(e) => updateUser(user.uid, { plan: e.target.value as AppUser["plan"] })} className="rounded-lg bg-white/[.05] px-2 py-1 outline-none"><option>Үндсэн</option><option>Plus</option></select>
                 </td>
                 <td className={`px-5 font-bold ${left === null ? "text-zinc-600" : remainingTone(left)}`}>{left === null ? "—" : left > 0 ? `${left} хоног` : "Дууссан"}</td>
                 <td className="px-5 text-zinc-500">{user.joined}</td>
                 <td className={`px-5 font-bold ${user.status === "Идэвхтэй" ? "text-emerald-400" : "text-amber-400"}`}>{user.status}</td>
-                <td className="px-5"><button onClick={() => updateUser(user.uid, { status: user.status === "Идэвхтэй" ? "Түр зогссон" : "Идэвхтэй" })} className="text-zinc-500 hover:text-white">{user.status === "Идэвхтэй" ? "Түр зогсоох" : "Идэвхжүүлэх"}</button></td>
+                <td className="px-5">
+                  <button onClick={() => setSelectedId(user.uid)} className="mr-3 font-bold text-white hover:text-[#ff536a]">Дэлгэрэнгүй</button>
+                  <button onClick={() => changeStatus(user)} className="text-zinc-500 hover:text-white">{user.status === "Идэвхтэй" ? "Түр зогсоох" : "Идэвхжүүлэх"}</button>
+                </td>
               </tr>
               );
             })}
           </tbody>
         </table>
+        {!visible.length && <p className="py-10 text-center text-sm text-zinc-600">Хэрэглэгч олдсонгүй.</p>}
       </div>
+      <TablePager pager={list} />
       {adding && (
         <Modal onClose={() => setAdding(false)}>
           <div className="p-8">
             <h2 className="text-2xl font-black">Хэрэглэгч нэмэх</h2>
             <AdminField label="EMAIL ХАЯГ"><input value={email} onChange={(e) => setEmail(e.target.value)} type="email" placeholder="name@example.com" className="admin-input mt-6" /></AdminField>
-            <button disabled={!email.includes("@")} onClick={async () => { await adminFetch("/api/admin/users", { method: "POST", body: JSON.stringify({ email }) }); setAdding(false); setEmail(""); await reload(); notify("Хэрэглэгч нэмэгдлээ."); }} className="mt-5 h-12 w-full rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Нэмэх</button>
+            <button disabled={!email.includes("@") || busy} onClick={addUser} className="mt-5 h-12 w-full rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Нэмэх</button>
           </div>
         </Modal>
       )}
+      {pendingPause && (
+        <ConfirmModal
+          title="Хэрэглэгчийг түр зогсоох уу?"
+          body={`${userLabel(pendingPause)} нэвтэрч, контент үзэж чадахгүй.`}
+          confirmLabel="Түр зогсоох"
+          onCancel={() => setPendingPause(null)}
+          onConfirm={() => {
+            const user = pendingPause;
+            setPendingPause(null);
+            void updateUser(user.uid, { status: "Түр зогссон" });
+          }}
+        />
+      )}
+      {selected && <UserDetail user={selected} payments={payments} content={content} onClose={() => setSelectedId(null)} onUpdate={updateUser} onStatus={changeStatus} />}
     </div>
   );
 }
 
-function PaymentsAdmin({ payments, reload, notify }: { payments: Payment[]; reload: () => Promise<void>; notify: (message: string) => void }) {
+function UserDetail({ user, payments, content, onClose, onUpdate, onStatus }: { user: AppUser; payments: Payment[]; content: SeriesWithEpisodes[]; onClose: () => void; onUpdate: (uid: string, patch: Partial<AppUser>) => Promise<void>; onStatus: (user: AppUser) => void }) {
+  const history = userPayments(user, payments);
+  const spent = history.filter((payment) => payment.status === "Амжилттай").reduce((sum, payment) => sum + payment.amount, 0);
+  const left = user.plan === "Plus" ? daysRemaining(user.subscriptionExpiresAt) : null;
+  const contact = user.email || (user.phone ? formatPhone(user.phone) : "");
+  const owned = new Map<string, { id: string; title: string; date: string; amount: number }>();
+  for (const payment of history) {
+    if (payment.status !== "Амжилттай" || !payment.seriesId || owned.has(payment.seriesId)) continue;
+    const series = content.find((item) => item.id === payment.seriesId);
+    owned.set(payment.seriesId, { id: payment.seriesId, title: series?.title || payment.product, date: payment.date, amount: payment.amount });
+  }
+  return (
+    <Modal onClose={onClose} size="xl">
+      <div className="max-h-[85vh] overflow-y-auto p-6 md:p-8">
+        <div className="flex items-center gap-4 pr-10">
+          {user.photoURL ? (
+            <img src={user.photoURL} alt="" className="h-16 w-16 rounded-full object-cover" />
+          ) : (
+            <span className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-black text-black">{(user.displayName || contact || "Х").slice(0, 1).toUpperCase()}</span>
+          )}
+          <div>
+            <h2 className="text-2xl font-black">{user.displayName || contact || "Хэрэглэгч"}</h2>
+            <p className={`mt-1 text-xs font-bold ${user.status === "Идэвхтэй" ? "text-emerald-400" : "text-amber-400"}`}>{user.plan} · {user.status}</p>
+          </div>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <DetailFact label="Нэр">{user.displayName}</DetailFact>
+          <DetailFact label="Email">{user.email}</DetailFact>
+          <DetailFact label="Утас">{user.phone ? formatPhone(user.phone) : ""}</DetailFact>
+          <DetailFact label="Эрх">{user.plan}</DetailFact>
+          <DetailFact label="Үлдсэн хоног">{left === null ? "—" : left > 0 ? `${left} хоног` : "Дууссан"}</DetailFact>
+          <DetailFact label="Эрх дуусах">{user.plan === "Plus" && user.subscriptionExpiresAt ? formatDate(user.subscriptionExpiresAt) : ""}</DetailFact>
+          <DetailFact label="Бүртгүүлсэн">{user.joined}</DetailFact>
+          <DetailFact label="Төлөв">{user.status}</DetailFact>
+          <DetailFact label="Нийт төлбөр">{formatMoney(spent)}</DetailFact>
+          <DetailFact label="Хэрэглэгчийн ID"><span className="font-mono text-xs font-medium text-zinc-400">{user.uid}</span></DetailFact>
+        </div>
+        <div className="mt-6 flex flex-wrap gap-3">
+          <select value={user.plan} onChange={(e) => onUpdate(user.uid, { plan: e.target.value as AppUser["plan"] })} className="rounded-xl border border-white/10 bg-[#141419] px-4 py-3 text-xs font-bold outline-none"><option>Үндсэн</option><option>Plus</option></select>
+          <button onClick={() => onStatus(user)} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-bold text-zinc-300 hover:text-white">{user.status === "Идэвхтэй" ? "Түр зогсоох" : "Идэвхжүүлэх"}</button>
+        </div>
+        <DetailHeading>Авсан контент</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          <table className="w-full min-w-[520px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["КОНТЕНТ", "ДҮН", "ОГНОО"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+            <tbody>
+              {[...owned.values()].map((item) => (
+                <tr key={item.id} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-4 py-3 font-bold">{item.title}</td>
+                  <td className="px-4 py-3">{formatMoney(item.amount)}</td>
+                  <td className="px-4 py-3 text-zinc-500">{item.date}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!owned.size && <p className="py-8 text-center text-sm text-zinc-600">Авсан контент алга.</p>}
+        </div>
+        <DetailHeading>Төлбөрийн түүх</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          <table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ДУГААР", "БҮТЭЭГДЭХҮҮН", "ДҮН", "ОГНОО", "ТӨЛӨВ"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+            <tbody>
+              {history.map((payment) => (
+                <tr key={payment.id} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-4 py-3 font-bold">{payment.senderInvoiceNo || payment.id}</td>
+                  <td className="px-4 py-3 text-zinc-400">{payment.product}</td>
+                  <td className="px-4 py-3">{formatMoney(payment.amount)}</td>
+                  <td className="px-4 py-3 text-zinc-500">{payment.date}</td>
+                  <td className={`px-4 py-3 font-bold ${payment.status === "Амжилттай" ? "text-emerald-400" : "text-amber-400"}`}>{payment.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!history.length && <p className="py-8 text-center text-sm text-zinc-600">Төлбөр алга.</p>}
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function PaymentsAdmin({ payments, notify, onRefunded }: { payments: Payment[]; notify: (message: string) => void; onRefunded: (payment: Payment) => void }) {
   const [query, setQuery] = useState("");
   const [status, setStatus] = useState("Бүгд");
+  const [pending, setPending] = useState<Payment | null>(null);
+  const [busy, setBusy] = useState(false);
   const visible = payments.filter((payment) => (payment.id.toLowerCase().includes(query.toLowerCase()) || payment.email.toLowerCase().includes(query.toLowerCase())) && (status === "Бүгд" || payment.status === status));
+  const list = usePaged(visible, `${query}|${status}`);
   const exportCsv = () => {
     const csv = [["Дугаар", "Email", "Дүн", "Бүтээгдэхүүн", "Огноо", "Хэлбэр", "Төлөв"], ...visible.map((payment) => [payment.id, payment.email, payment.amount, payment.product, payment.date, payment.method, payment.status])].map((row) => row.join(",")).join("\n");
     const link = document.createElement("a");
@@ -966,9 +1287,17 @@ function PaymentsAdmin({ payments, reload, notify }: { payments: Payment[]; relo
     notify("CSV тайлан татагдлаа.");
   };
   const refund = async (payment: Payment) => {
-    await adminFetch(`/api/admin/payments/${payment.id}/refund`, { method: "POST" });
-    await reload();
-    notify("Төлбөр буцаагдлаа.");
+    setBusy(true);
+    try {
+      await adminFetch(`/api/admin/payments/${payment.id}/refund`, { method: "POST" });
+      onRefunded(payment);
+      setPending(null);
+      notify("Төлбөр буцаагдлаа.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Төлбөр буцаагдсангүй.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div>
@@ -990,7 +1319,7 @@ function PaymentsAdmin({ payments, reload, notify }: { payments: Payment[]; relo
         <table className="w-full min-w-[850px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ДУГААР", "ХЭРЭГЛЭГЧ", "ДҮН", "БҮТЭЭГДЭХҮҮН", "ОГНОО", "ТӨЛӨВ", ""].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
           <tbody>
-            {visible.map((payment) => (
+            {list.rows.map((payment) => (
               <tr key={payment.id} className="border-b border-white/[.05] last:border-0">
                 <td className="px-5 py-5 font-bold">{payment.senderInvoiceNo}</td>
                 <td className="px-5 text-zinc-400">{payment.email}</td>
@@ -998,24 +1327,40 @@ function PaymentsAdmin({ payments, reload, notify }: { payments: Payment[]; relo
                 <td className="px-5 text-zinc-400">{payment.product}<small className="block text-zinc-700">{payment.method}</small></td>
                 <td className="px-5 text-zinc-500">{payment.date}</td>
                 <td className={`px-5 font-bold ${payment.status === "Амжилттай" ? "text-emerald-400" : "text-amber-400"}`}>{payment.status}</td>
-                <td className="px-5">{payment.status === "Амжилттай" && <button onClick={() => refund(payment)} className="text-zinc-500 hover:text-red-400">Буцаах</button>}</td>
+                <td className="px-5">{payment.status === "Амжилттай" && <button onClick={() => setPending(payment)} className="text-zinc-500 hover:text-red-400">Буцаах</button>}</td>
               </tr>
             ))}
           </tbody>
         </table>
+        {!visible.length && <p className="py-10 text-center text-sm text-zinc-600">Төлбөр олдсонгүй.</p>}
       </div>
+      <TablePager pager={list} />
+      {pending && (
+        <ConfirmModal
+          title="Төлбөр буцаах уу?"
+          body={`${pending.email || "Хэрэглэгч"} · ${pending.product} · ${formatMoney(pending.amount)}. Буцаасан төлбөрийн эрх, худалдан авалт хаагдана.`}
+          confirmLabel="Буцаах"
+          busy={busy}
+          onCancel={() => setPending(null)}
+          onConfirm={() => refund(pending)}
+        />
+      )}
     </div>
   );
 }
 
-function SettingsAdmin({ settings, reload, notify }: { settings: Settings; reload: () => Promise<void>; notify: (message: string) => void }) {
+function SettingsAdmin({ settings, onSaved, notify }: { settings: Settings; onSaved: (settings: Settings) => void; notify: (message: string) => void }) {
   const [draft, setDraft] = useState(settings);
   useEffect(() => setDraft(settings), [settings]);
   const update = (key: keyof Settings, value: string | boolean) => setDraft((current) => ({ ...current, [key]: value }));
   const save = async () => {
-    await adminFetch("/api/admin/settings", { method: "PUT", body: JSON.stringify(draft) });
-    await reload();
-    notify("Тохиргоо амжилттай хадгалагдлаа.");
+    try {
+      await adminFetch("/api/admin/settings", { method: "PUT", body: JSON.stringify(draft) });
+      onSaved(draft);
+      notify("Тохиргоо амжилттай хадгалагдлаа.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Тохиргоо хадгалагдсангүй.");
+    }
   };
   return (
     <div className="max-w-2xl">
@@ -1042,21 +1387,33 @@ function SettingsAdmin({ settings, reload, notify }: { settings: Settings; reloa
             </div>
           ))}
         </div>
+        <PageSizeSetting />
         <button onClick={save} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black">Өөрчлөлт хадгалах</button>
       </div>
     </div>
   );
 }
 
-function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; showOwners: boolean }) {
+function RevenueAdmin({ revenue, showOwners, days, onDays }: { revenue: RevenueReport | null; showOwners: boolean; days: RevenueWindow; onDays: (days: RevenueWindow) => Promise<void> }) {
   const rows = revenue?.rows ?? [];
   const admins = revenue?.admins ?? [];
+  const adminPage = usePaged(admins, String(days));
+  const rowPage = usePaged(rows, String(days));
   return (
     <div>
-      <h2 className="text-2xl font-black">Орлого</h2>
-      <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-        Шууд борлуулалтын 80% контент бүтээгчид, 20% платформд. Сарын эрхийн 50%-ийг давтагдаагүй үзэлтээр бүтээгчдэд хуваана. Урьсан бүтээгч нь уригдсан бүтээгчийн шууд борлуулалтын 10%-ийг авна.
-      </p>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black">Орлого</h2>
+          <p className="mt-1 max-w-3xl text-sm text-zinc-600">
+            Сүүлийн {days} хоногийн төлбөр. Шууд борлуулалтын 80% бүтээгчид. Сарын эрхийн 50%-ийг нийт давтагдаагүй үзэлтээр хуваана. Урилга нь шууд борлуулалтын 10%.
+          </p>
+        </div>
+        <div className="flex gap-2">
+          {revenueWindows.map((option) => (
+            <button key={option} type="button" onClick={() => onDays(option)} className={`rounded-full px-4 py-2 text-xs font-bold ${days === option ? "bg-white text-black" : "border border-white/10 text-zinc-400"}`}>{option} хоног</button>
+          ))}
+        </div>
+      </div>
       <div className="mt-5 grid gap-4 sm:grid-cols-3">
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
           <p className="text-xs font-bold text-zinc-500">{showOwners ? "Сарын эрхийн 50%" : "Сарын эрхийн хувь"}</p>
@@ -1075,13 +1432,14 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
         </div>
       </div>
       {showOwners && (
+        <>
         <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
           <table className="w-full min-w-[980px] text-left text-xs">
             <thead className="border-b border-white/[.07] text-zinc-600">
               <tr>{["БҮТЭЭГЧ", "КОНТЕНТ", "1 ҮЗЭЛТ", "ХУВЬ", "ШУУД 80%", "САРЫН ЭРХ", "УРИЛГА", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
             </thead>
             <tbody>
-              {admins.map((admin) => (
+              {adminPage.rows.map((admin) => (
                 <tr key={admin.adminId} className="border-b border-white/[.05] last:border-0">
                   <td className="px-5 py-4 font-bold">{admin.name}</td>
                   <td className="px-5 text-zinc-400">{admin.contentCount}</td>
@@ -1097,6 +1455,8 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
           </table>
           {!admins.length && <p className="py-10 text-center text-sm text-zinc-600">Орлого алга.</p>}
         </div>
+        <TablePager pager={adminPage} />
+        </>
       )}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[1040px] text-left text-xs">
@@ -1104,7 +1464,7 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
             <tr>{["КОНТЕНТ", ...(showOwners ? ["БҮТЭЭГЧ"] : []), "1 ҮЗЭЛТ", "ХУВЬ", "БОРЛУУЛАЛТ", "БҮТЭЭГЧ 80%", "САРЫН ЭРХ", "НИЙТ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
           </thead>
           <tbody>
-            {rows.map((row) => (
+            {rowPage.rows.map((row) => (
               <tr key={row.seriesId} className="border-b border-white/[.05] last:border-0">
                 <td className="px-5 py-4 font-bold">{row.title}</td>
                 {showOwners && <td className="px-5 text-zinc-400">{row.ownerName}</td>}
@@ -1120,37 +1480,52 @@ function RevenueAdmin({ revenue, showOwners }: { revenue: RevenueReport | null; 
         </table>
         {!rows.length && <p className="py-10 text-center text-sm text-zinc-600">Контент алга.</p>}
       </div>
+      <TablePager pager={rowPage} />
     </div>
   );
 }
 
-function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: () => Promise<void>; notify: (message: string) => void }) {
+function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notify }: { staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: RevenueReport | null; payments: Payment[]; onStaff: (update: (staff: StaffAdmin[]) => StaffAdmin[]) => void; notify: (message: string) => void }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [pendingClose, setPendingClose] = useState<StaffAdmin | null>(null);
+  const selected = staff.find((admin) => admin.id === selectedId) ?? null;
+  const list = usePaged(staff);
   const create = async () => {
     setError("");
     try {
-      await adminFetch("/api/admin/staff", { method: "POST", body: JSON.stringify({ name, username, password }) });
+      const saved = await adminFetch<{ admin: StaffAdmin }>("/api/admin/staff", { method: "POST", body: JSON.stringify({ name, username, password }) });
+      onStaff((current) => [saved.admin, ...current.filter((admin) => admin.id !== saved.admin.id)]);
       setName("");
       setUsername("");
       setPassword("");
-      await reload();
       notify("Контент бүтээгч нэмэгдлээ.");
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Контент бүтээгч нэмэгдсэнгүй.");
     }
   };
   const patch = async (id: string, body: { active?: boolean; password?: string }) => {
-    await adminFetch(`/api/admin/staff/${id}`, { method: "PATCH", body: JSON.stringify(body) });
-    await reload();
-    notify(body.password ? "Нууц үг шинэчлэгдлээ." : "Контент бүтээгчийн төлөв шинэчлэгдлээ.");
+    try {
+      await adminFetch(`/api/admin/staff/${id}`, { method: "PATCH", body: JSON.stringify(body) });
+      if (typeof body.active === "boolean") onStaff((current) => current.map((admin) => admin.id === id ? { ...admin, active: body.active as boolean } : admin));
+      notify(body.password ? "Нууц үг шинэчлэгдлээ." : "Контент бүтээгчийн төлөв шинэчлэгдлээ.");
+      return true;
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Бүтээгч шинэчлэгдсэнгүй.");
+      return false;
+    }
+  };
+  const requestActive = (admin: StaffAdmin) => {
+    if (admin.active) setPendingClose(admin);
+    else void patch(admin.id, { active: true });
   };
   return (
     <div>
       <h2 className="text-2xl font-black">Контент бүтээгчид</h2>
-      <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн {formatMoney(CREATOR_FEE)} төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Бүтээгч зөвхөн өөрийн контент болон орлогоо харна.</p>
+      <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн {formatMoney(CREATOR_FEE)} төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Нэр дээр дарж дэлгэрэнгүй харна.</p>
       <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-4">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Нэр" className="admin-input" />
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Нэвтрэх нэр" className="admin-input" autoCapitalize="none" />
@@ -1174,9 +1549,13 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
               <td className="px-5 font-bold text-emerald-400">Бүх эрх</td>
               <td className="px-5 text-zinc-600">өөрчлөхгүй</td>
             </tr>
-            {staff.map((admin) => (
+            {list.rows.map((admin) => (
               <tr key={admin.id} className="border-b border-white/[.05] last:border-0">
-                <td className="px-5 py-4 font-bold">{admin.name}{admin.contentType && <small className="mt-1 block font-medium text-zinc-600">{admin.contentType}</small>}{admin.invitedByName && <small className="mt-1 block font-medium text-zinc-600">Урьсан: {admin.invitedByName}</small>}</td>
+                <td className="px-5 py-4">
+                  <button onClick={() => setSelectedId(admin.id)} className="text-left font-bold hover:underline">{admin.name}</button>
+                  {admin.contentType && <small className="mt-1 block font-medium text-zinc-600">{admin.contentType}</small>}
+                  {admin.invitedByName && <small className="mt-1 block font-medium text-zinc-600">Урьсан: {admin.invitedByName}</small>}
+                </td>
                 <td className="px-5 text-zinc-400">{admin.username}</td>
                 <td className="px-5 font-bold tracking-wider text-zinc-300">{admin.inviteCode || "—"}</td>
                 <td className="px-5 text-zinc-500">{admin.phone ? formatPhone(admin.phone) : "—"}{admin.email && <small className="block text-zinc-600">{admin.email}</small>}</td>
@@ -1184,13 +1563,189 @@ function StaffAdmin({ staff, reload, notify }: { staff: StaffAdmin[]; reload: ()
                 <td className={`px-5 font-bold ${admin.source === "self" && !admin.paid ? "text-amber-400" : "text-zinc-400"}`}>{admin.source === "self" ? (admin.paid ? formatMoney(CREATOR_FEE) : "Хүлээгдэж буй") : "Гараар"}</td>
                 <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
                 <td className="px-5">
-                  <button onClick={() => patch(admin.id, { active: !admin.active })} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+                  <button onClick={() => setSelectedId(admin.id)} className="mr-3 font-bold text-white hover:text-[#ff536a]">Дэлгэрэнгүй</button>
+                  <button onClick={() => requestActive(admin)} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
       </div>
+      <TablePager pager={list} />
+      {selected && (
+        <CreatorDetail
+          admin={selected}
+          staff={staff}
+          content={content}
+          lessons={lessons}
+          revenue={revenue?.admins.find((item) => item.adminId === selected.id) ?? null}
+          payments={payments}
+          onClose={() => setSelectedId(null)}
+          onToggle={() => requestActive(selected)}
+          onPassword={(password) => patch(selected.id, { password })}
+        />
+      )}
+      {pendingClose && (
+        <ConfirmModal
+          title="Бүтээгчийг хаах уу?"
+          body={`${pendingClose.name} админ хуудсанд нэвтэрч чадахгүй.`}
+          confirmLabel="Хаах"
+          onCancel={() => setPendingClose(null)}
+          onConfirm={() => {
+            const admin = pendingClose;
+            setPendingClose(null);
+            void patch(admin.id, { active: false });
+          }}
+        />
+      )}
     </div>
+  );
+}
+
+function safeLink(value: string) {
+  if (!/^https?:\/\//i.test(value)) return "";
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return "";
+    return url.toString();
+  } catch {
+    return "";
+  }
+}
+
+function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onClose, onToggle, onPassword }: { admin: StaffAdmin; staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: AdminRevenue | null; payments: Payment[]; onClose: () => void; onToggle: () => void; onPassword: (password: string) => Promise<boolean> }) {
+  const [password, setPassword] = useState("");
+  const series = content.filter((item) => item.ownerId === admin.id);
+  const ownLessons = lessons.filter((item) => item.ownerId === admin.id);
+  const invitees = staff.filter((item) => item.id !== admin.id && (item.invitedById ? item.invitedById === admin.id : Boolean(admin.name) && item.invitedByName === admin.name));
+  const feePayments = payments.filter((payment) => payment.creatorId === admin.id || payment.uid === `creator:${admin.id}`);
+  const portfolio = safeLink(admin.portfolio);
+  const fullName = [admin.lastName, admin.firstName].filter(Boolean).join(" ");
+  const savePassword = async () => {
+    if (await onPassword(password)) setPassword("");
+  };
+  return (
+    <Modal onClose={onClose} size="xl">
+      <div className="max-h-[85vh] overflow-y-auto p-6 md:p-8">
+        <div className="pr-10">
+          <h2 className="text-2xl font-black">{admin.name || "Контент бүтээгч"}</h2>
+          <p className={`mt-1 text-xs font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"} · {admin.source === "self" ? "Өөрөө бүртгүүлсэн" : "Гараар нэмсэн"}</p>
+        </div>
+        <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <DetailFact label="Овог, нэр">{fullName}</DetailFact>
+          <DetailFact label="Нэвтрэх нэр">{admin.username}</DetailFact>
+          <DetailFact label="Контентын төрөл">{admin.contentType}</DetailFact>
+          <DetailFact label="Утас">{admin.phone ? formatPhone(admin.phone) : ""}</DetailFact>
+          <DetailFact label="Email">{admin.email}</DetailFact>
+          <DetailFact label="Бүртгэсэн">{admin.createdAt ? formatDate(admin.createdAt) : ""}</DetailFact>
+          <DetailFact label="Банк">{admin.bankName}</DetailFact>
+          <DetailFact label="Данс">{admin.bankAccount}</DetailFact>
+          <DetailFact label="Бүртгэлийн төлбөр">{admin.source === "self" ? (admin.paid ? formatMoney(CREATOR_FEE) : "Хүлээгдэж буй") : "Гараар, төлбөргүй"}</DetailFact>
+          <DetailFact label="Урилгын код"><span className="tracking-[.2em]">{admin.inviteCode}</span></DetailFact>
+          <DetailFact label="Урьсан бүтээгч">{admin.invitedByName}{admin.invitedByCode ? ` · ${admin.invitedByCode}` : ""}</DetailFact>
+          <DetailFact label="Нөхцөл зөвшөөрсөн">{admin.termsAcceptedAt ? formatDate(admin.termsAcceptedAt) : ""}</DetailFact>
+          <DetailFact label="Шууд 80%">{formatMoney(revenue?.direct ?? 0)}</DetailFact>
+          <DetailFact label="Сарын эрх">{formatMoney(revenue?.subscriptionShare ?? 0)}</DetailFact>
+          <DetailFact label="Урилга">{formatMoney(revenue?.referral ?? 0)}</DetailFact>
+          <DetailFact label="Нийт орлого">{formatMoney(revenue?.total ?? 0)}</DetailFact>
+          <DetailFact label="Контент">{series.length}</DetailFact>
+          <DetailFact label="Давтагдаагүй үзэлт">{revenue?.uniqueViews ?? series.reduce((sum, item) => sum + item.uniqueViews, 0)}</DetailFact>
+        </div>
+        {admin.portfolio && (
+          <>
+            <DetailHeading>Портфолио</DetailHeading>
+            {portfolio ? <a href={portfolio} target="_blank" rel="noreferrer" className="mt-3 block text-sm font-bold text-[#ff536a] hover:underline">{portfolio}</a> : <p className="mt-3 text-sm text-zinc-400">{admin.portfolio}</p>}
+          </>
+        )}
+        {admin.experience && (
+          <>
+            <DetailHeading>Туршлага</DetailHeading>
+            <p className="mt-3 whitespace-pre-wrap text-sm leading-6 text-zinc-300">{admin.experience}</p>
+          </>
+        )}
+        <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
+          <button onClick={onToggle} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-bold text-zinc-300 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+          <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Шинэ нууц үг" className="admin-input sm:max-w-xs" />
+          <button type="button" disabled={password.length < 6} onClick={savePassword} className="rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black disabled:opacity-40">Нууц үг солих</button>
+        </div>
+        <DetailHeading>Контент</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          <table className="w-full min-w-[640px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["НЭР", "ТӨЛӨВ", "АНГИ", "1 ҮЗЭЛТ", "ҮНЭ"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+            <tbody>
+              {series.map((item) => (
+                <tr key={item.id} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-4 py-3 font-bold">{item.title}</td>
+                  <td className="px-4 py-3 text-zinc-400">{item.status}</td>
+                  <td className="px-4 py-3 text-zinc-400">{item.episodeList.length}</td>
+                  <td className="px-4 py-3 text-zinc-400">{item.uniqueViews}</td>
+                  <td className="px-4 py-3">{item.access === "free" ? "Үнэгүй" : formatMoney(item.price)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!series.length && <p className="py-8 text-center text-sm text-zinc-600">Контент алга.</p>}
+        </div>
+        <DetailHeading>Мэдлэг</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          {ownLessons.map((lesson) => (
+            <p key={lesson.id} className="border-b border-white/[.05] px-4 py-3 text-sm font-bold last:border-0">{lesson.title}</p>
+          ))}
+          {!ownLessons.length && <p className="py-8 text-center text-sm text-zinc-600">Мэдлэгийн хичээл алга.</p>}
+        </div>
+        <DetailHeading>Урьсан бүтээгчид</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          <table className="w-full min-w-[480px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["НЭР", "НЭВТРЭХ НЭР", "ТӨЛӨВ"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+            <tbody>
+              {invitees.map((item) => (
+                <tr key={item.id} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-4 py-3 font-bold">{item.name}</td>
+                  <td className="px-4 py-3 text-zinc-400">{item.username}</td>
+                  <td className={`px-4 py-3 font-bold ${item.active ? "text-emerald-400" : "text-amber-400"}`}>{item.active ? "Идэвхтэй" : "Хаалттай"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!invitees.length && <p className="py-8 text-center text-sm text-zinc-600">Урьсан бүтээгч алга.</p>}
+        </div>
+        {(revenue?.referrals.length ?? 0) > 0 && (
+          <>
+            <DetailHeading>Урилгын орлого</DetailHeading>
+            <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+              <table className="w-full min-w-[480px] text-left text-xs">
+                <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["БҮТЭЭГЧ", "БОРЛУУЛАЛТ", "10%"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+                <tbody>
+                  {revenue?.referrals.map((item) => (
+                    <tr key={item.creatorId} className="border-b border-white/[.05] last:border-0">
+                      <td className="px-4 py-3 font-bold">{item.name}</td>
+                      <td className="px-4 py-3 text-zinc-400">{formatMoney(item.gross)}</td>
+                      <td className="px-4 py-3">{formatMoney(item.reward)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+        <DetailHeading>Бүртгэлийн төлбөр</DetailHeading>
+        <div className="mt-3 overflow-x-auto rounded-2xl border border-white/[.07]">
+          <table className="w-full min-w-[520px] text-left text-xs">
+            <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ДУГААР", "ДҮН", "ОГНОО", "ТӨЛӨВ"].map((heading) => <th key={heading} className="px-4 py-3">{heading}</th>)}</tr></thead>
+            <tbody>
+              {feePayments.map((payment) => (
+                <tr key={payment.id} className="border-b border-white/[.05] last:border-0">
+                  <td className="px-4 py-3 font-bold">{payment.senderInvoiceNo || payment.id}</td>
+                  <td className="px-4 py-3">{formatMoney(payment.amount)}</td>
+                  <td className="px-4 py-3 text-zinc-500">{payment.date}</td>
+                  <td className={`px-4 py-3 font-bold ${payment.status === "Амжилттай" ? "text-emerald-400" : "text-amber-400"}`}>{payment.status}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {!feePayments.length && <p className="py-8 text-center text-sm text-zinc-600">Бүртгэлийн төлбөр алга.</p>}
+        </div>
+      </div>
+    </Modal>
   );
 }

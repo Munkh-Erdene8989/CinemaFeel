@@ -43,7 +43,14 @@ export function mapStaff(id: string, data: Record<string, unknown>): StaffAdmin 
     bankName: String(data.bankName ?? ""),
     bankAccount: String(data.bankAccount ?? ""),
     inviteCode: String(data.inviteCode ?? ""),
+    invitedById: String(data.invitedById ?? ""),
+    invitedByCode: String(data.invitedByCode ?? ""),
     invitedByName: String(data.invitedByName ?? ""),
+    firstName: String(data.firstName ?? ""),
+    lastName: String(data.lastName ?? ""),
+    portfolio: String(data.portfolio ?? ""),
+    experience: String(data.experience ?? ""),
+    termsAcceptedAt: Number(data.termsAcceptedAt ?? 0),
   };
 }
 

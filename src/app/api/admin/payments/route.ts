@@ -8,7 +8,10 @@ export async function GET(request: NextRequest) {
   if (gate.error) return gate.error;
   const snap = await adminDb().collection("payments").get();
   const payments = snap.docs
-    .map((item) => ({ id: item.id, ...(item.data() as Omit<Payment, "id">) }))
+    .map((item) => {
+      const data = item.data() as Omit<Payment, "id">;
+      return { id: item.id, ...data, qrImage: "", qrText: "", urls: [] };
+    })
     .sort((a, b) => b.createdAt - a.createdAt);
   return NextResponse.json({ payments });
 }

@@ -37,16 +37,17 @@ export async function POST(request: NextRequest) {
   const existing = await adminDb().collection("admins").where("username", "==", username).limit(1).get();
   if (!existing.empty) return jsonError("Энэ нэвтрэх нэр бүртгэлтэй байна.");
   const id = newId();
-  await adminDb().collection("admins").doc(id).set({
+  const profile = {
     username,
     name,
     passwordHash: hashPassword(password),
     active: true,
     paid: true,
-    source: "manual",
+    source: "manual" as const,
     kind: "creator",
     inviteCode: await uniqueInviteCode(),
     createdAt: Date.now(),
-  });
-  return NextResponse.json({ id });
+  };
+  await adminDb().collection("admins").doc(id).set(profile);
+  return NextResponse.json({ admin: mapStaff(id, profile) });
 }

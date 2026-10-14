@@ -1,5 +1,14 @@
 import { SUPER_ADMIN_ID, type AdminRevenue, type Payment, type ReferralEarning, type RevenueReport, type RevenueRow, type Series } from "./types";
 
+export const revenueWindows = [15, 30, 90] as const;
+export type RevenueWindow = (typeof revenueWindows)[number];
+
+export function revenueWindow(value: unknown, now = Date.now()) {
+  const days = Number(value);
+  const window = (revenueWindows as readonly number[]).includes(days) ? (days as RevenueWindow) : 30;
+  return { days: window, since: now - window * 24 * 60 * 60 * 1000 };
+}
+
 const CREATOR_DIRECT_PERCENT = 80;
 const SUBSCRIPTION_CREATOR_PERCENT = 50;
 const REFERRAL_PERCENT = 10;

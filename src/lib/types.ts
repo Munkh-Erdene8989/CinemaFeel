@@ -30,7 +30,14 @@ export type StaffAdmin = {
   bankName: string;
   bankAccount: string;
   inviteCode: string;
+  invitedById: string;
+  invitedByCode: string;
   invitedByName: string;
+  firstName: string;
+  lastName: string;
+  portfolio: string;
+  experience: string;
+  termsAcceptedAt: number;
 };
 
 export const CREATOR_FEE = 10000;

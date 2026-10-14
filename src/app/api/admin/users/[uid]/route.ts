@@ -18,5 +18,5 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
   if (body.plan === "Үндсэн") patch.subscriptionExpiresAt = 0;
   if (!Object.keys(patch).length) return jsonError("Өөрчлөх мэдээлэл алга.");
   await adminDb().collection("users").doc(uid).set(patch, { merge: true });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, ...patch });
 }

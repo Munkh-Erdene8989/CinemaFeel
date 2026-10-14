@@ -2,15 +2,16 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
-import { buildRevenue } from "@/lib/revenue";
+import { buildRevenue, revenueWindow } from "@/lib/revenue";
 import { SUPER_ADMIN_ID, type AdminRevenue, type Payment } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   const session = await assertAdmin(request);
   if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
+  const { since } = revenueWindow(request.nextUrl.searchParams.get("days"));
   const [seriesSnap, paymentSnap, staffSnap] = await Promise.all([
     adminDb().collection("series").get(),
-    adminDb().collection("payments").get(),
+    adminDb().collection("payments").where("createdAt", ">=", since).get(),
     adminDb().collection("admins").get(),
   ]);
   const series = seriesSnap.docs.map((item) => mapSeries(item.id, item.data()));

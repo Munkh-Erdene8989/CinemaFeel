@@ -32,5 +32,5 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     );
   }
   await ref.set({ status: "Буцаагдсан" }, { merge: true });
-  return NextResponse.json({ ok: true });
+  return NextResponse.json({ ok: true, mode: payment.mode, uid: payment.uid, creatorId: payment.creatorId || "" });
 }

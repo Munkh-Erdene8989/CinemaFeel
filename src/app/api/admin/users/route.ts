@@ -26,18 +26,16 @@ export async function POST(request: NextRequest) {
   } catch {
     user = await adminAuth().createUser({ email });
   }
-  await adminDb().collection("users").doc(user.uid).set(
-    {
-      email,
-      plan: "Үндсэн",
-      status: "Идэвхтэй",
-      joined: todayStamp(),
-      subscriptionExpiresAt: null,
-      displayName: "",
-      photoURL: "",
-      createdAt: Date.now(),
-    },
-    { merge: true },
-  );
-  return NextResponse.json({ uid: user.uid });
+  const profile = {
+    email,
+    plan: "Үндсэн" as const,
+    status: "Идэвхтэй" as const,
+    joined: todayStamp(),
+    subscriptionExpiresAt: null,
+    displayName: "",
+    photoURL: "",
+    createdAt: Date.now(),
+  };
+  await adminDb().collection("users").doc(user.uid).set(profile, { merge: true });
+  return NextResponse.json({ user: { uid: user.uid, ...profile } });
 }
