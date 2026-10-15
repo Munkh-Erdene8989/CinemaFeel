@@ -170,9 +170,13 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
     }
     setLoading(true);
     setError("");
+    const currentToken = await clientAuth().currentUser?.getIdToken().catch(() => undefined);
     const response = await fetch("/api/auth/otp/verify", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(currentToken ? { Authorization: `Bearer ${currentToken}` } : {}),
+      },
       body: JSON.stringify({ email, code: otp }),
     });
     const data = (await response.json()) as { error?: string; token?: string };

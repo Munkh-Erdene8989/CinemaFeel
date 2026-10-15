@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { signInWithCustomToken } from "firebase/auth";
 import { clientAuth } from "@/lib/firebase";
 import { Icon, Modal } from "./icons";
 
@@ -45,15 +46,19 @@ export function EmailPromptModal({ onClose, onLinked }: { onClose: () => void; o
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ email, code: otp }),
     });
-    const data = (await response.json()) as { error?: string };
-    if (!response.ok) {
+    const data = (await response.json()) as { error?: string; token?: string };
+    if (!response.ok || !data.token) {
       setLoading(false);
       setError(data.error || "Имэйл бүртгэж чадсангүй.");
       return;
     }
-    const current = clientAuth().currentUser;
-    await current?.reload().catch(() => undefined);
-    await current?.getIdToken(true).catch(() => undefined);
+    try {
+      await signInWithCustomToken(clientAuth(), data.token);
+    } catch {
+      setLoading(false);
+      setError("Имэйл холбогдсон ч нэвтрэлт шинэчлэгдсэнгүй. Дахин нэвтэрнэ үү.");
+      return;
+    }
     setLoading(false);
     onLinked();
   };

@@ -1,5 +1,6 @@
 import { createHash, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { attachEmail } from "@/lib/attach-email";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
 import { jsonError, readUser } from "@/lib/http";
 
@@ -13,11 +14,6 @@ function same(a: string, b: string) {
   return timingSafeEqual(left, right);
 }
 
-function authCode(error: unknown) {
-  if (error && typeof error === "object" && "code" in error) return String(error.code);
-  return "";
-}
-
 export async function POST(request: NextRequest) {
   const decoded = await readUser(request);
   if (!decoded?.uid) return jsonError("Нэвтрэх шаардлагатай.", 401);
@@ -27,9 +23,6 @@ export async function POST(request: NextRequest) {
   const code = body.code?.trim() ?? "";
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return jsonError("Зөв email хаяг оруулна уу.");
   if (!/^\d{6}$/.test(code)) return jsonError("6 оронтой код оруулна уу.");
-
-  const currentEmail = decoded.email?.toLowerCase() || "";
-  if (currentEmail && currentEmail !== email) return jsonError("Энэ бүртгэлд өөр имэйл холбогдсон байна.");
 
   const ref = adminDb().collection("otp").doc(hash(email));
   const snap = await ref.get();
@@ -45,22 +38,9 @@ export async function POST(request: NextRequest) {
     return jsonError("Код буруу байна.", 400);
   }
 
-  if (currentEmail !== email) {
-    try {
-      const taken = await adminAuth().getUserByEmail(email);
-      if (taken.uid !== decoded.uid) return jsonError("Энэ имэйл өөр бүртгэлд бүртгэлтэй байна.");
-    } catch (error) {
-      if (authCode(error) !== "auth/user-not-found") return jsonError("Имэйл шалгаж чадсангүй.", 500);
-    }
-    try {
-      await adminAuth().updateUser(decoded.uid, { email, emailVerified: true });
-    } catch (error) {
-      if (authCode(error) === "auth/email-already-exists") return jsonError("Энэ имэйл өөр бүртгэлд бүртгэлтэй байна.");
-      return jsonError("Имэйл холбож чадсангүй.", 500);
-    }
-  }
-
+  const attached = await attachEmail(decoded.uid, email);
+  if (!attached.ok) return jsonError(attached.error, attached.status);
   await ref.delete();
-  await adminDb().collection("users").doc(decoded.uid).set({ email }, { merge: true });
-  return NextResponse.json({ ok: true });
+  const token = await adminAuth().createCustomToken(decoded.uid);
+  return NextResponse.json({ ok: true, token });
 }

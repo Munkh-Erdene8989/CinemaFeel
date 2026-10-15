@@ -17,7 +17,7 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, profile, openAuth, openFilm, beginCheckout } = useSite();
+  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout } = useSite();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
@@ -27,7 +27,9 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const [needsPay, setNeedsPay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [askEmail, setAskEmail] = useState(true);
+  const [playbackKey, setPlaybackKey] = useState(0);
   const loadedFor = useRef("");
+  const paywallRetry = useRef(false);
   const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
 
   useEffect(() => {
@@ -72,7 +74,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       loadedFor.current = "";
       return;
     }
-    const requestKey = `${user.uid}:${current.id}`;
+    const requestKey = `${user.uid}:${current.id}:${playbackKey}`;
     if (loadedFor.current === requestKey) return;
     let ignore = false;
     (async () => {
@@ -97,6 +99,11 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       }
       if (data.code === "paywall") {
         setNeedsPay(true);
+        if (subscribed && !paywallRetry.current) {
+          paywallRetry.current = true;
+          loadedFor.current = "";
+          setPlaybackKey((value) => value + 1);
+        }
         return;
       }
       if (!response.ok) {
@@ -128,7 +135,11 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     return () => {
       ignore = true;
     };
-  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId]);
+  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed]);
+
+  useEffect(() => {
+    paywallRetry.current = false;
+  }, [seriesId, episodeNumber, user?.uid]);
 
   const saveProgress = (seconds: number) => {
     if (!user || !current) return;
@@ -197,14 +208,14 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
                 {film?.image && !loading && <img src={film.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
                 <div className="relative">
-                  {loading ? "Ачааллаж байна..." : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
+                  {loading ? "Ачааллаж байна..." : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !subscribed ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
                   {needsAuth && (
                     <button onClick={openAuth} className="mt-4 flex h-11 items-center gap-2 rounded-full bg-white px-5 text-xs font-extrabold text-black">
                       <Icon name="play" className="h-4 w-4" fill />
                       Нэвтэрч үзэх
                     </button>
                   )}
-                  {needsPay && film && (
+                  {needsPay && !subscribed && film && (
                     <div className="mt-4 grid gap-2">
                       <button onClick={() => beginCheckout("subscription", film)} className="h-11 rounded-full border border-white/20 px-5 text-xs font-extrabold">Сарын эрх авах</button>
                       <button onClick={() => beginCheckout("weekly", film)} className="offer-glow h-11 rounded-full bg-[#ff3d56] px-5 text-xs font-extrabold">7 хоног · {formatMoney(WEEKLY_PRICE)}</button>
@@ -236,7 +247,17 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
           </div>
         </div>
       </div>
-      {needsEmail && askEmail && <EmailPromptModal onClose={() => setAskEmail(false)} onLinked={() => setAskEmail(false)} />}
+      {needsEmail && askEmail && (
+        <EmailPromptModal
+          onClose={() => setAskEmail(false)}
+          onLinked={() => {
+            loadedFor.current = "";
+            setNeedsPay(false);
+            setPlaybackKey((value) => value + 1);
+            setAskEmail(false);
+          }}
+        />
+      )}
     </section>
   );
 }

@@ -1,7 +1,8 @@
 import { createHash, timingSafeEqual } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { attachEmail } from "@/lib/attach-email";
 import { adminAuth, adminDb } from "@/lib/firebase-admin";
-import { jsonError } from "@/lib/http";
+import { jsonError, readUser } from "@/lib/http";
 
 function hash(value: string) {
   return createHash("sha256").update(value).digest("hex");
@@ -33,6 +34,14 @@ export async function POST(request: NextRequest) {
     return jsonError("Код буруу байна.", 400);
   }
   await ref.delete();
+
+  const session = await readUser(request);
+  if (session?.uid) {
+    const attached = await attachEmail(session.uid, email);
+    if (!attached.ok) return jsonError(attached.error, attached.status);
+    const token = await adminAuth().createCustomToken(session.uid);
+    return NextResponse.json({ token });
+  }
 
   let user;
   try {
