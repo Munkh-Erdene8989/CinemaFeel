@@ -7,12 +7,17 @@ import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
+import { EmailPromptModal } from "./email-prompt-modal";
 import { Icon } from "./icons";
 import { useSite } from "./site-provider";
 
+function phoneOnlyAccount(email?: string | null, phone?: string | null) {
+  return !String(email || "").includes("@") && Boolean(String(phone || "").trim());
+}
+
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, openAuth, openFilm, beginCheckout } = useSite();
+  const { series, user, profile, openAuth, openFilm, beginCheckout } = useSite();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
@@ -21,7 +26,13 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const [needsAuth, setNeedsAuth] = useState(false);
   const [needsPay, setNeedsPay] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [askEmail, setAskEmail] = useState(true);
   const loadedFor = useRef("");
+  const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
+
+  useEffect(() => {
+    setAskEmail(true);
+  }, [seriesId]);
 
   useEffect(() => {
     if (!firebaseConfigured()) return;
@@ -225,6 +236,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
           </div>
         </div>
       </div>
+      {needsEmail && askEmail && <EmailPromptModal onClose={() => setAskEmail(false)} onLinked={() => setAskEmail(false)} />}
     </section>
   );
 }

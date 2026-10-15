@@ -1,9 +1,12 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "./firebase-admin";
 import { resendConfigured, sendNewReleaseEmail, type ReleaseMail } from "./mail";
+import { sendReleaseEmails, sendReleaseSms, supportedMnMobile, wesendConfigured } from "./wesend";
 
 export type AnnouncementResult = {
   notified: number;
+  emailed?: number;
+  smsed?: number;
   notifyError?: string;
   notifyPending?: string;
 };
@@ -29,17 +32,26 @@ function watchLink(origin: string, shareCode: string, seriesId: string) {
   return `${base}/watch/${seriesId}/1`;
 }
 
-async function recipientEmails() {
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+async function recipients() {
   const snap = await adminDb().collection("users").get();
-  const seen = new Set<string>();
+  const emails = new Set<string>();
+  const phones = new Set<string>();
+  let skippedPhones = 0;
   for (const item of snap.docs) {
     const data = item.data();
     if (data.status === "Түр зогссон") continue;
     const email = String(data.email ?? "").trim().toLowerCase();
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) continue;
-    seen.add(email);
+    if (emailPattern.test(email)) {
+      emails.add(email);
+      continue;
+    }
+    const phone = supportedMnMobile(String(data.phone ?? ""));
+    if (phone) phones.add(phone);
+    else if (String(data.phone ?? "").trim()) skippedPhones += 1;
   }
-  return [...seen];
+  return { emails: [...emails], phones: [...phones], skippedPhones };
 }
 
 async function announce(seriesId: string, origin: string): Promise<AnnouncementResult> {
@@ -56,15 +68,18 @@ async function announce(seriesId: string, origin: string): Promise<AnnouncementR
 
   const cover = httpUrl(data.cover);
   if (!cover) {
-    return { notified: 0, notifyPending: "Хөндлөн зураг оруулсны дараа бүртгэлтэй хэрэглэгчдэд имэйл илгээгдэнэ." };
+    return { notified: 0, notifyPending: "Хөндлөн зураг оруулсны дараа бүртгэлтэй хэрэглэгчдэд мэдэгдэл илгээгдэнэ." };
   }
-  if (!resendConfigured()) return { notified: 0, notifyError: "Имэйл илгээх тохиргоо дутуу байна." };
 
-  const emails = await recipientEmails();
-  if (!emails.length) {
+  const audience = await recipients();
+  if (audience.skippedPhones) console.warn("new content notice skipped unsupported phones", audience.skippedPhones);
+  if (!audience.emails.length && !audience.phones.length) {
     await ref.set({ announcedAt: Date.now(), releaseEmail: "sent" }, { merge: true });
     return { notified: 0 };
   }
+  const canEmail = resendConfigured() || wesendConfigured();
+  if (audience.emails.length && !canEmail) return { notified: 0, notifyError: "Имэйл илгээх тохиргоо дутуу байна." };
+  if (audience.phones.length && !wesendConfigured()) return { notified: 0, notifyError: "SMS илгээх тохиргоо дутуу байна." };
 
   const claimed = await adminDb().runTransaction(async (tx) => {
     const current = await tx.get(ref);
@@ -86,18 +101,34 @@ async function announce(seriesId: string, origin: string): Promise<AnnouncementR
   };
 
   try {
-    const sent = await sendNewReleaseEmail(emails, mail, seriesId);
-    if (!sent.ok) {
-      await ref.set({ announcedAt: FieldValue.delete(), releaseEmail: "pending" }, { merge: true });
-      return { notified: 0, notifyError: sent.error || "Шинэ контентийн имэйл илгээгдсэнгүй." };
+    let emailed = 0;
+    if (audience.emails.length) {
+      const sent = resendConfigured()
+        ? await sendNewReleaseEmail(audience.emails, mail, seriesId)
+        : await sendReleaseEmails(audience.emails, mail, seriesId);
+      if (!sent.ok) {
+        await ref.set({ announcedAt: FieldValue.delete(), releaseEmail: "pending" }, { merge: true });
+        return { notified: 0, notifyError: sent.error || "Шинэ контентийн имэйл илгээгдсэнгүй." };
+      }
+      emailed = audience.emails.length;
     }
+    if (audience.phones.length) {
+      const sent = await sendReleaseSms(audience.phones, mail.title, mail.link, seriesId);
+      if (!sent.ok) {
+        await ref.set({ announcedAt: FieldValue.delete(), releaseEmail: "pending" }, { merge: true });
+        return { notified: 0, notifyError: sent.error || "Шинэ контентийн SMS илгээгдсэнгүй." };
+      }
+    }
+    return {
+      notified: emailed + audience.phones.length,
+      emailed: emailed || undefined,
+      smsed: audience.phones.length || undefined,
+    };
   } catch (error) {
     await ref.set({ announcedAt: FieldValue.delete(), releaseEmail: "pending" }, { merge: true });
-    console.error("new content email failed", error);
-    return { notified: 0, notifyError: "Шинэ контентийн имэйл илгээгдсэнгүй." };
+    console.error("new content notice failed", error);
+    return { notified: 0, notifyError: "Шинэ контентийн мэдэгдэл илгээгдсэнгүй." };
   }
-
-  return { notified: emails.length };
 }
 
 export async function announceIfReady(seriesId: string, origin: string): Promise<AnnouncementResult> {
@@ -105,6 +136,6 @@ export async function announceIfReady(seriesId: string, origin: string): Promise
     return await announce(seriesId, origin);
   } catch (error) {
     console.error("new content email failed", error);
-    return { notified: 0, notifyError: "Шинэ контентийн имэйл илгээгдсэнгүй." };
+    return { notified: 0, notifyError: "Шинэ контентийн мэдэгдэл илгээгдсэнгүй." };
   }
 }

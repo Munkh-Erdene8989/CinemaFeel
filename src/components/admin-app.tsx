@@ -27,12 +27,24 @@ async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
 
 type ReleaseNotice = {
   notified?: number;
+  emailed?: number;
+  smsed?: number;
   notifyError?: string;
   notifyPending?: string;
   telegramSent?: boolean;
   telegramError?: string;
   telegramPending?: string;
 };
+
+function releaseNote(saved: ReleaseNotice) {
+  if (!saved.notified) return saved.notifyError || saved.notifyPending || "";
+  const parts = [
+    saved.emailed ? `${saved.emailed} имэйл` : "",
+    saved.smsed ? `${saved.smsed} SMS` : "",
+  ].filter(Boolean);
+  const detail = parts.length ? ` (${parts.join(", ")})` : "";
+  return `${saved.notified} бүртгэлтэй хэрэглэгч рүү шинэ контентийн мэдэгдэл илгээлээ${detail}.`;
+}
 
 function telegramNote(saved: ReleaseNotice) {
   const parts: string[] = [];
@@ -701,9 +713,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
   const toggleStatus = async (film: SeriesWithEpisodes) => {
     try {
       const saved = await onStatus(film);
-      const email = saved.notified
-        ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү имэйл илгээлээ.`
-        : saved.notifyError || saved.notifyPending || "";
+      const email = releaseNote(saved);
       const extra = [email, telegramNote(saved)].filter(Boolean).join(" ");
       notify(extra ? `Контентын төлөв шинэчлэгдлээ. ${extra}` : "Контентын төлөв шинэчлэгдлээ.");
     } catch (cause) {
@@ -859,9 +869,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
   const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
   const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
   const rememberMail = (saved: ReleaseNotice) => {
-    const email = saved.notified
-      ? `${saved.notified} бүртгэлтэй хэрэглэгч рүү шинэ киноны имэйл илгээлээ.`
-      : saved.notifyError || saved.notifyPending || "";
+    const email = releaseNote(saved);
     const note = [email, telegramNote(saved)].filter(Boolean).join(" ");
     if (!note) return;
     mailNote.current = note;
@@ -1448,7 +1456,7 @@ function SettingsAdmin({ settings, onSaved, notify }: { settings: Settings; onSa
         <div className="border-t border-white/[.07] pt-5">
           {([
             ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google, email эсвэл утасны дугаараар шинээр бүртгүүлж болно."],
-            ["notifications", "Email мэдэгдэл", "Шинэ контент нийтлэхэд бүртгэлтэй хэрэглэгчдэд киноны линк, хөндлөн зурагтай имэйл илгээнэ."],
+            ["notifications", "Контентын мэдэгдэл", "Шинэ контент нийтлэхэд имэйлтэй хэрэглэгчид киноны линк илгээнэ. Имэйл байхгүй бол утас руу SMS явна."],
             ["maintenance", "Засварын горим", "Хэрэглэгчдэд түр хаалттай хуудас харуулна."],
           ] as const).map(([key, label, help]) => (
             <div key={key} className="flex items-center justify-between py-3">

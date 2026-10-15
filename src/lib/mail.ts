@@ -90,9 +90,7 @@ function releaseCopy(mail: ReleaseMail) {
   return { title, description, meta, lead, close };
 }
 
-export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMail, seriesId: string, idempotencyKey?: string) {
-  const resend = client();
-  if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
+export function releaseMessage(mail: ReleaseMail) {
   const copy = releaseCopy(mail);
   const safeTitle = escapeHtml(copy.title);
   const safeLink = escapeHtml(mail.link);
@@ -120,8 +118,17 @@ export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMai
   if (copy.meta) lines.push(copy.meta);
   if (copy.description) lines.push("", copy.description);
   lines.push("", copy.close, "", `Кино үзэх: ${mail.link}`);
-  const text = lines.join("\n");
-  const subject = `Шинээр нэмэгдлээ: ${copy.title}`;
+  return {
+    subject: `Шинээр нэмэгдлээ: ${copy.title}`,
+    html,
+    text: lines.join("\n"),
+  };
+}
+
+export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMail, seriesId: string, idempotencyKey?: string) {
+  const resend = client();
+  if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
+  const message = releaseMessage(mail);
   const tagId = seriesId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "series";
   const from = fromAddress();
 
@@ -132,9 +139,9 @@ export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMai
       chunk.map((to) => ({
         from,
         to: [to],
-        subject,
-        html,
-        text,
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
         tags: [
           { name: "category", value: "new_release" },
           { name: "series_id", value: tagId },
