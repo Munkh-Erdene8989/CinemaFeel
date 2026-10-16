@@ -1,10 +1,11 @@
 import { randomInt } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { viewerCheckoutQuote } from "@/lib/discount";
 import { adminDb } from "@/lib/firebase-admin";
 import { todayStamp } from "@/lib/format";
 import { jsonError, readUser, siteOrigin } from "@/lib/http";
 import { createInvoice } from "@/lib/qpay";
-import { WEEKLY_PRICE, defaultSettings } from "@/lib/types";
+import { defaultSettings } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
@@ -13,26 +14,11 @@ export async function POST(request: NextRequest) {
   const profile = await adminDb().collection("users").doc(user.uid).get();
   if (profile.data()?.status === "Түр зогссон") return jsonError("Таны бүртгэл түр зогссон байна.", 403);
 
-  const body = (await request.json().catch(() => ({}))) as { mode?: string; seriesId?: string | null };
+  const body = (await request.json().catch(() => ({}))) as { mode?: string; seriesId?: string | null; code?: string };
   const settingsSnap = await adminDb().collection("settings").doc("app").get();
   const monthly = Number(settingsSnap.data()?.price || defaultSettings.price);
-  let amount = monthly;
-  let product = "CinemaFeel Plus";
-  let seriesId: string | null = null;
-  const mode = body.mode === "single" ? "single" : body.mode === "weekly" ? "weekly" : "subscription";
-
-  if (mode === "weekly") {
-    amount = WEEKLY_PRICE;
-    product = "CinemaFeel 7 хоног";
-  } else if (mode === "single") {
-    if (!body.seriesId) return jsonError("Кино сонгоно уу.");
-    const series = await adminDb().collection("series").doc(body.seriesId).get();
-    if (!series.exists || series.data()?.status !== "Нийтлэгдсэн") return jsonError("Кино олдсонгүй.", 404);
-    amount = Number(series.data()?.price ?? 0);
-    if (amount <= 0) return jsonError("Энэ кино үнэгүй.");
-    product = String(series.data()?.title ?? "Кино");
-    seriesId = body.seriesId;
-  }
+  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly });
+  if (!quote.ok) return jsonError(quote.error, quote.status);
 
   const senderInvoiceNo = `CF${Date.now()}${randomInt(100, 999)}`;
   const callbackUrl = `${siteOrigin(request)}/api/qpay/callback?sender=${senderInvoiceNo}`;
@@ -40,8 +26,8 @@ export async function POST(request: NextRequest) {
   try {
     invoice = await createInvoice({
       senderInvoiceNo,
-      description: product,
-      amount,
+      description: quote.discountPercent ? `${quote.product} · ${quote.discountCode} -${quote.discountPercent}%` : quote.product,
+      amount: quote.amount,
       callbackUrl,
     });
   } catch (error) {
@@ -52,10 +38,13 @@ export async function POST(request: NextRequest) {
   await adminDb().collection("payments").doc(senderInvoiceNo).set({
     uid: user.uid,
     email: contact,
-    amount,
-    product,
-    mode,
-    seriesId,
+    amount: quote.amount,
+    originalAmount: quote.originalAmount,
+    discountCode: quote.discountCode,
+    discountPercent: quote.discountPercent,
+    product: quote.product,
+    mode: quote.mode,
+    seriesId: quote.seriesId,
     createdAt: Date.now(),
     date: todayStamp(),
     method: "QPay",
@@ -73,6 +62,9 @@ export async function POST(request: NextRequest) {
     qrImage: invoice.qr_image || "",
     qrText: invoice.qr_text || "",
     urls: invoice.urls || [],
-    amount,
+    amount: quote.amount,
+    originalAmount: quote.originalAmount,
+    discountCode: quote.discountCode,
+    discountPercent: quote.discountPercent,
   });
 }

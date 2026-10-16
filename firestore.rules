@@ -58,5 +58,9 @@ service cloud.firestore {
     match /lessons/{lessonId} {
       allow read, write: if false;
     }
+
+    match /discounts/{code} {
+      allow read, write: if false;
+    }
   }
 }

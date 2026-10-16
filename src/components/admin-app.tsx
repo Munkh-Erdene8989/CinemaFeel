@@ -1,7 +1,7 @@
 "use client";
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AdminRevenue, AdminSession, AppUser, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
+import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { CREATOR_FEE, defaultSettings, SUPER_ADMIN_ID } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { buildRevenue, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
@@ -129,7 +129,7 @@ export function AdminApp() {
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
     : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"]];
 
   const notify = (message: string) => {
@@ -307,6 +307,7 @@ export function AdminApp() {
           {section === "Мэдлэг" && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
           {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} payments={payments} content={content} onUsers={setUsers} notify={notify} />}
+          {section === "Хөнгөлөлт" && superAdmin && <DiscountsAdmin notify={notify} />}
           {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} notify={notify} onRefunded={(payment) => {
             setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, status: "Буцаагдсан" } : item));
             if (payment.mode === "subscription" || payment.mode === "weekly") setUsers((current) => current.map((user) => user.uid === payment.uid ? { ...user, plan: "Үндсэн", subscriptionExpiresAt: Date.now() } : user));
@@ -1426,6 +1427,138 @@ function PaymentsAdmin({ payments, notify, onRefunded }: { payments: Payment[]; 
           busy={busy}
           onCancel={() => setPending(null)}
           onConfirm={() => refund(pending)}
+        />
+      )}
+    </div>
+  );
+}
+
+function DiscountsAdmin({ notify }: { notify: (message: string) => void }) {
+  const [discounts, setDiscounts] = useState<Discount[]>([]);
+  const [code, setCode] = useState("");
+  const [percent, setPercent] = useState("10");
+  const [busy, setBusy] = useState(false);
+  const [pending, setPending] = useState<Discount | null>(null);
+
+  const load = async () => {
+    const data = await adminFetch<{ discounts: Discount[] }>("/api/admin/discounts");
+    setDiscounts(data.discounts);
+  };
+
+  useEffect(() => {
+    load().catch((error: Error) => notify(error.message));
+  }, []);
+
+  const create = async () => {
+    setBusy(true);
+    try {
+      const saved = await adminFetch<{ discount: Discount }>("/api/admin/discounts", {
+        method: "POST",
+        body: JSON.stringify({ code, percent: Number(percent) }),
+      });
+      setDiscounts((current) => [saved.discount, ...current.filter((item) => item.code !== saved.discount.code)]);
+      setCode("");
+      notify("Хөнгөлөлтийн код үүслээ.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Код үүсгэж чадсангүй.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const update = async (discount: Discount, patch: { percent?: number; active?: boolean }) => {
+    try {
+      const saved = await adminFetch<{ discount: Discount }>("/api/admin/discounts", {
+        method: "PATCH",
+        body: JSON.stringify({ code: discount.code, ...patch }),
+      });
+      setDiscounts((current) => current.map((item) => item.code === saved.discount.code ? saved.discount : item));
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Код засагдсангүй.");
+    }
+  };
+
+  const remove = async (discount: Discount) => {
+    setBusy(true);
+    try {
+      await adminFetch("/api/admin/discounts", { method: "DELETE", body: JSON.stringify({ code: discount.code }) });
+      setDiscounts((current) => current.filter((item) => item.code !== discount.code));
+      setPending(null);
+      notify("Код устлаа.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Код устсангүй.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div>
+      <h2 className="text-2xl font-black">Хөнгөлөлтийн код</h2>
+      <p className="mt-1 max-w-3xl text-sm text-zinc-600">Код нь сарын эрх, 7 хоног, нэгж киноны төлбөрт үйлчилнэ. Хувиар 1–99. Бүтээгчийн бүртгэлийн хураамжид хамаарахгүй.</p>
+      <div className="mt-7 grid gap-4 rounded-2xl border border-white/[.07] bg-[#141419] p-6 md:grid-cols-[1fr_140px_auto] md:items-end">
+        <AdminField label="Код">
+          <input value={code} onChange={(e) => setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20))} placeholder="PLUS20" className="admin-input uppercase" />
+        </AdminField>
+        <AdminField label="Хувь">
+          <input value={percent} onChange={(e) => setPercent(e.target.value.replace(/\D/g, "").slice(0, 2))} inputMode="numeric" className="admin-input" />
+        </AdminField>
+        <button disabled={busy} onClick={create} className="h-11 rounded-xl bg-white px-5 text-xs font-extrabold text-black disabled:opacity-60">Код үүсгэх</button>
+      </div>
+      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/[.07]">
+        <table className="w-full min-w-[720px] text-left text-xs">
+          <thead className="bg-white/[.03] text-[10px] uppercase tracking-[.16em] text-zinc-500">
+            <tr>
+              <th className="px-5 py-3 font-bold">Код</th>
+              <th className="px-5 py-3 font-bold">Хувь</th>
+              <th className="px-5 py-3 font-bold">Төлөв</th>
+              <th className="px-5 py-3 font-bold">Ашигласан</th>
+              <th className="px-5 py-3 font-bold" />
+            </tr>
+          </thead>
+          <tbody>
+            {discounts.map((discount) => (
+              <tr key={discount.code} className="border-t border-white/[.06]">
+                <td className="px-5 py-4 font-black tracking-[.12em]">{discount.code}</td>
+                <td className="px-5 py-4">
+                  <input
+                    defaultValue={discount.percent}
+                    key={`${discount.code}-${discount.percent}`}
+                    onBlur={(e) => {
+                      const next = Number(e.target.value);
+                      if (next !== discount.percent) void update(discount, { percent: next });
+                    }}
+                    inputMode="numeric"
+                    className="h-9 w-20 rounded-lg border border-white/10 bg-transparent px-3 outline-none"
+                  />
+                </td>
+                <td className="px-5 py-4">
+                  <button onClick={() => update(discount, { active: !discount.active })} className={`rounded-full px-3 py-1 text-[10px] font-black ${discount.active ? "bg-emerald-400/15 text-emerald-400" : "bg-white/10 text-zinc-400"}`}>
+                    {discount.active ? "Идэвхтэй" : "Унтраалттай"}
+                  </button>
+                </td>
+                <td className="px-5 py-4 text-zinc-400">{discount.usedCount}</td>
+                <td className="px-5 py-4 text-right">
+                  <button onClick={() => setPending(discount)} className="font-bold text-red-400">Устгах</button>
+                </td>
+              </tr>
+            ))}
+            {!discounts.length && (
+              <tr>
+                <td colSpan={5} className="px-5 py-8 text-sm text-zinc-500">Хөнгөлөлтийн код алга.</td>
+              </tr>
+            )}
+          </tbody>
+        </table>
+      </div>
+      {pending && (
+        <ConfirmModal
+          title="Код устгах уу?"
+          body={`${pending.code} · ${pending.percent}%. Өмнөх төлбөр хэвээр үлдэнэ.`}
+          confirmLabel="Устгах"
+          busy={busy}
+          onCancel={() => setPending(null)}
+          onConfirm={() => remove(pending)}
         />
       )}
     </div>

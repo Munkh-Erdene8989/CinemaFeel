@@ -138,6 +138,17 @@ export type Payment = {
   qrText: string;
   urls: QPayUrl[];
   creatorId?: string;
+  originalAmount?: number;
+  discountCode?: string;
+  discountPercent?: number;
+};
+
+export type Discount = {
+  code: string;
+  percent: number;
+  active: boolean;
+  usedCount: number;
+  createdAt: number;
 };
 
 export type Settings = {

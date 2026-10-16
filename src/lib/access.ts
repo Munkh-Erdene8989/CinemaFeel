@@ -1,4 +1,4 @@
-import type { Firestore } from "firebase-admin/firestore";
+import { FieldValue, type Firestore } from "firebase-admin/firestore";
 import { WEEKLY_DAYS, type AppUser, type Payment, type Series } from "./types";
 import { subscriptionActive, todayStamp } from "./format";
 
@@ -58,5 +58,10 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
   }
 
   await ref.set({ status: "Амжилттай", paymentId: qpayPaymentId, date: todayStamp() }, { merge: true });
+  if (payment.discountCode) {
+    const discountRef = db.collection("discounts").doc(payment.discountCode);
+    const discount = await discountRef.get();
+    if (discount.exists) await discountRef.set({ usedCount: FieldValue.increment(1) }, { merge: true });
+  }
   return { ok: true as const, already: false };
 }

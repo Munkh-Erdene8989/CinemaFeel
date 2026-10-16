@@ -23,16 +23,21 @@ export function CheckoutModal({
 }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [code, setCode] = useState("");
+  const [applied, setApplied] = useState<{ code: string; percent: number; originalAmount: number; amount: number } | null>(null);
   const [invoice, setInvoice] = useState<{ senderInvoiceNo: string; qrImage: string; urls: QPayUrl[] } | null>(null);
   const weekly = mode === "weekly";
-  const total = mode === "single" ? film?.price ?? 0 : weekly ? WEEKLY_PRICE : monthlyPrice;
+  const listPrice = mode === "single" ? film?.price ?? 0 : weekly ? WEEKLY_PRICE : monthlyPrice;
+  const total = applied?.amount ?? listPrice;
   const title = mode === "single" ? film?.title : weekly ? "CinemaFeel 7 хоногийн эрх" : "CinemaFeel сарын эрх";
   const label = mode === "single" ? "Киноны эрх" : weekly ? "7 хоногийн эрх" : "30 хоногийн эрх";
 
   useEffect(() => {
     setInvoice(null);
     setError("");
-  }, [mode]);
+    setApplied(null);
+    setCode("");
+  }, [mode, film?.id]);
 
   const createInvoice = async () => {
     setLoading(true);
@@ -46,13 +51,16 @@ export function CheckoutModal({
     const response = await fetch("/api/qpay/invoice", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, seriesId: film?.id ?? null }),
+      body: JSON.stringify({ mode, seriesId: film?.id ?? null, code: applied?.code || "" }),
     });
-    const data = (await response.json()) as { error?: string; senderInvoiceNo?: string; qrImage?: string; urls?: QPayUrl[] };
+    const data = (await response.json()) as { error?: string; senderInvoiceNo?: string; qrImage?: string; urls?: QPayUrl[]; amount?: number; originalAmount?: number; discountCode?: string; discountPercent?: number };
     setLoading(false);
     if (!response.ok || !data.senderInvoiceNo) {
       setError(data.error || "Нэхэмжлэх үүсгэж чадсангүй.");
       return;
+    }
+    if (data.discountCode && data.amount != null && data.originalAmount != null && data.discountPercent != null) {
+      setApplied({ code: data.discountCode, percent: data.discountPercent, originalAmount: data.originalAmount, amount: data.amount });
     }
     setInvoice({ senderInvoiceNo: data.senderInvoiceNo, qrImage: data.qrImage || "", urls: data.urls || [] });
   };
@@ -78,6 +86,34 @@ export function CheckoutModal({
       return;
     }
     onPaid();
+  };
+
+  const applyCode = async () => {
+    if (!code.trim()) {
+      setError("Хөнгөлөлтийн код оруулна уу.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const token = await clientAuth().currentUser?.getIdToken();
+    if (!token) {
+      setLoading(false);
+      setError("Эхлээд нэвтэрнэ үү.");
+      return;
+    }
+    const response = await fetch("/api/discount/preview", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ mode, seriesId: film?.id ?? null, code }),
+    });
+    const data = (await response.json()) as { error?: string; code?: string; percent?: number; originalAmount?: number; amount?: number };
+    setLoading(false);
+    if (!response.ok || !data.code || data.amount == null || data.originalAmount == null || data.percent == null) {
+      setApplied(null);
+      setError(data.error || "Хөнгөлөлтийн код олдсонгүй.");
+      return;
+    }
+    setApplied({ code: data.code, percent: data.percent, originalAmount: data.originalAmount, amount: data.amount });
   };
 
   return (
@@ -109,11 +145,35 @@ export function CheckoutModal({
             <span className="text-xl font-black">{formatMoney(WEEKLY_PRICE)}</span>
           </button>
         )}
+        {!invoice && (
+          <div className="mt-6">
+            <span className="mb-2 block text-xs font-bold text-zinc-400">ХӨНГӨЛӨЛТИЙН КОД</span>
+            <div className="flex gap-2">
+              <input
+                value={code}
+                onChange={(e) => {
+                  setCode(e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20));
+                  setApplied(null);
+                }}
+                onKeyDown={(e) => e.key === "Enter" && applyCode()}
+                placeholder="PLUS20"
+                className="h-12 min-w-0 flex-1 rounded-xl border border-white/10 bg-white/[0.04] px-4 text-sm uppercase outline-none transition focus:border-[#ff536a]"
+              />
+              <button disabled={loading} onClick={applyCode} className="h-12 shrink-0 rounded-xl border border-white/15 px-4 text-xs font-extrabold disabled:opacity-60">Хэрэглэх</button>
+            </div>
+          </div>
+        )}
         <div className={`mt-6 rounded-2xl p-4 ${weekly ? "offer-glow border border-[#ff8a9a]/40 bg-[#ff3d56]/10" : "bg-white/[0.04]"}`}>
           <div className="flex justify-between text-sm text-zinc-400">
             <span>{label}</span>
-            <span className={weekly ? "text-lg font-black text-white" : ""}>{formatMoney(total)}</span>
+            <span className={applied ? "text-zinc-500 line-through" : weekly ? "text-lg font-black text-white" : ""}>{formatMoney(applied?.originalAmount ?? listPrice)}</span>
           </div>
+          {applied && (
+            <div className="mt-3 flex justify-between text-sm text-emerald-400">
+              <span>{applied.code} · -{applied.percent}%</span>
+              <span>-{formatMoney(applied.originalAmount - applied.amount)}</span>
+            </div>
+          )}
           <div className="mt-4 flex justify-between border-t border-white/10 pt-4 font-black">
             <span>Нийт</span>
             <span>{formatMoney(total)}</span>
