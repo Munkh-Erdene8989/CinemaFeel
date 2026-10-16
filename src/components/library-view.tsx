@@ -1,12 +1,15 @@
 "use client";
 
+import { isMature } from "@/lib/mature";
 import { FilmGridSkeleton } from "./content-skeleton";
 import { FilmCard } from "./film-card";
+import { useMatureConsent } from "./mature-gate";
 import { useSite } from "./site-provider";
 
 export function LibraryView() {
   const { series, owned, subscribed, openFilm, ready } = useSite();
-  const available = series.filter((film) => film.access === "free" || owned.includes(film.id) || subscribed);
+  const { allowed } = useMatureConsent();
+  const available = series.filter((film) => (film.access === "free" || owned.includes(film.id) || subscribed) && (allowed || !isMature(film)));
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-32 md:px-10 lg:px-16">
       <div data-rise>

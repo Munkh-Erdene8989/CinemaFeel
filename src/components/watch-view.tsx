@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { isMature } from "@/lib/mature";
 import { retrySubscribedPaywall } from "@/lib/playback";
 import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
@@ -11,6 +12,7 @@ import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
 import { EmailPromptModal } from "./email-prompt-modal";
 import { Icon } from "./icons";
+import { MatureGate, useMatureConsent } from "./mature-gate";
 import { usePulse } from "./motion";
 import { useSite } from "./site-provider";
 
@@ -21,7 +23,9 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
   const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout, ready } = useSite();
+  const { allowed, allow } = useMatureConsent();
   const film = series.find((item) => item.id === seriesId) ?? null;
+  const matureLocked = Boolean(film && isMature(film) && allowed !== true);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
   const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleText: string; subtitleOffsetMs: number } | null>(null);
@@ -58,6 +62,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const current = episodes.find((item) => item.number === episodeNumber) ?? episodes[0];
 
   useEffect(() => {
+    if (matureLocked) return;
     if (!current?.id) return;
     if (!current.storagePath && current.source !== "youtube") {
       setLoading(false);
@@ -139,7 +144,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     return () => {
       ignore = true;
     };
-  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed]);
+  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed, matureLocked]);
 
   useEffect(() => {
     paywallRetry.current = false;
@@ -160,7 +165,15 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const previousEpisode = episodeIndex > 0 ? episodes[episodeIndex - 1] : null;
   const nextEpisode = episodeIndex >= 0 && episodeIndex < episodes.length - 1 ? episodes[episodeIndex + 1] : null;
 
-  if (!ready) return <WatchSkeleton />;
+  if (!ready || (film && isMature(film) && allowed === null)) return <WatchSkeleton />;
+
+  if (film && isMature(film) && !allowed) {
+    return (
+      <section className="min-h-screen">
+        <MatureGate onAccept={allow} onDecline={() => router.push("/")} />
+      </section>
+    );
+  }
 
   if (!film) {
     return (

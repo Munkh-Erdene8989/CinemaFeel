@@ -6,19 +6,24 @@ import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { WEEKLY_PRICE } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
+import { MATURE_CATEGORY, coverFilm, isMatureLabel, matureCatalog, publicCatalog, readMatureConsent } from "@/lib/mature";
 import { FilmCard } from "./film-card";
 import { CatalogSkeleton, HeroSkeleton } from "./content-skeleton";
 import { Icon } from "./icons";
+import { MatureGate, useMatureConsent } from "./mature-gate";
 import { prefersReducedMotion } from "./motion";
 import { useSite } from "./site-provider";
 
 export function HomeView() {
   const { series, owned, subscribed, openFilm, beginCheckout, settings, ready } = useSite();
+  const { allowed, allow } = useMatureConsent();
   const [category, setCategory] = useState("Бүгд");
-  const categories = ["Бүгд", ...settings.genres];
+  const [askMature, setAskMature] = useState(false);
+  const categories = ["Бүгд", ...settings.genres.filter((genre) => !isMatureLabel(genre)), MATURE_CATEGORY];
   const active = categories.includes(category) ? category : "Бүгд";
-  const visible = active === "Бүгд" ? series : series.filter((film) => film.genre === active);
-  const featured = series.find((film) => film.featured) ?? series[0];
+  const safe = publicCatalog(series);
+  const visible = active === MATURE_CATEGORY ? (allowed ? matureCatalog(series) : []) : active === "Бүгд" ? safe : safe.filter((film) => film.genre === active);
+  const featured = coverFilm(series);
   const cover = featured?.cover || featured?.image || "";
   const titleWords = featured?.title.split(" ").filter(Boolean) ?? [];
   const titleLead = titleWords.length > 1 ? titleWords.slice(0, -1).join(" ") : featured?.title ?? "";
@@ -91,8 +96,8 @@ export function HomeView() {
               </>
             ) : (
               <div>
-                <h1 className="text-4xl font-black tracking-tight md:text-5xl">Нийтлэгдсэн кино алга</h1>
-                <p className="mt-4 max-w-md text-sm leading-7 text-zinc-500">Шинэ контент нэмэгдэхэд энд харагдана.</p>
+                <h1 className="text-4xl font-black tracking-tight md:text-5xl">{series.length ? "Нүүрэнд онцлох кино алга" : "Нийтлэгдсэн кино алга"}</h1>
+                <p className="mt-4 max-w-md text-sm leading-7 text-zinc-500">{series.length ? "+18 контент тусдаа ангилалд байна." : "Шинэ контент нэмэгдэхэд энд харагдана."}</p>
               </div>
             )}
           </div>
@@ -129,6 +134,13 @@ export function HomeView() {
               data-rise
               data-delay={String((index % 8) * 0.04)}
               onClick={(event) => {
+                if (item === MATURE_CATEGORY && !allowed) {
+                  if (readMatureConsent()) {
+                    allow();
+                    setCategory(item);
+                  } else setAskMature(true);
+                  return;
+                }
                 setCategory(item);
                 if (!prefersReducedMotion()) animate(event.currentTarget, { scale: [0.94, 1], duration: 320, ease: "outBack", composition: "replace" });
               }}
@@ -145,6 +157,16 @@ export function HomeView() {
         </div>
         {!visible.length && <p data-rise className="py-16 text-center text-sm text-zinc-500">Энэ ангилалд нийтлэгдсэн кино алга.</p>}
       </section>
+      {askMature && (
+        <MatureGate
+          onDecline={() => setAskMature(false)}
+          onAccept={() => {
+            allow();
+            setAskMature(false);
+            setCategory(MATURE_CATEGORY);
+          }}
+        />
+      )}
     </>
   );
 }

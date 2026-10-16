@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { WatchView } from "@/components/watch-view";
 import { adminDb } from "@/lib/firebase-admin";
+import { isMature } from "@/lib/mature";
 
 export const dynamic = "force-dynamic";
 
@@ -16,6 +17,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
   }
   if (!snap.exists) return { title: "CinemaFeel" };
   const data = snap.data() ?? {};
+  if (isMature(data)) return { title: "CinemaFeel", description: "Насанд хүрэгчдэд зориулсан контент." };
   const title = String(data.title || "CinemaFeel");
   const description = String(data.description || "");
   const image = String(data.cover || data.image || "");

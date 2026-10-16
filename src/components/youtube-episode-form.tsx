@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import CustomYouTubePlayer, { parseSrt } from "../../ExampleVD/CustomYouTubePlayer.jsx";
+import { isMature } from "@/lib/mature";
 import { parseYouTubeUrl } from "@/lib/youtube";
 import type { SeriesWithEpisodes } from "@/lib/types";
 import { AdminField, FilePicker, Modal } from "./icons";
@@ -64,6 +65,7 @@ export function YoutubeEpisodeForm({
   const [created, setCreated] = useState<{ id: string; title: string } | null>(null);
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState(genres[0] ?? "Драма");
+  const [age, setAge] = useState("13+");
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState(0);
   const [status, setStatus] = useState("Ноорог");
@@ -103,6 +105,7 @@ export function YoutubeEpisodeForm({
   const options = created && !content.some((film) => film.id === created.id) ? [{ id: created.id, title: created.title }, ...content] : content;
   const posterSrc = posterPreview || (seriesId !== "new" ? selected?.image : "") || "";
   const coverSrc = coverPreview || (seriesId !== "new" ? selected?.cover : "") || "";
+  const mature = seriesId === "new" ? isMature({ age, genre }) : isMature(selected ?? { age, genre });
   const playerTitle = (seriesId === "new" ? title : selected?.title || title).trim();
 
   const onSrtFile = async (file: File) => {
@@ -130,6 +133,7 @@ export function YoutubeEpisodeForm({
             description,
             price: Number(price) || 0,
             status,
+            age,
             episodes: 1,
           }),
         });
@@ -145,7 +149,7 @@ export function YoutubeEpisodeForm({
           body: JSON.stringify({ posterPath: storagePath }),
         });
       }
-      if (coverFile) {
+      if (coverFile && !mature) {
         setBusy("Вэбсайт ковер хуулж байна...");
         const storagePath = await uploadAdminFile(coverFile, "cover", id);
         await adminFetch(`/api/admin/series/${id}`, {
@@ -206,6 +210,13 @@ export function YoutubeEpisodeForm({
                     ))}
                   </select>
                 </AdminField>
+                <AdminField label="Нас">
+                  <select value={age} onChange={(event) => setAge(event.target.value)} className="admin-input">
+                    <option>13+</option>
+                    <option>16+</option>
+                    <option>18+</option>
+                  </select>
+                </AdminField>
                 <AdminField label="Тайлбар">
                   <textarea value={description} onChange={(event) => setDescription(event.target.value)} className="admin-input h-24 py-3" placeholder="Товч тайлбар" />
                 </AdminField>
@@ -234,14 +245,20 @@ export function YoutubeEpisodeForm({
                 <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" fileName={posterFile?.name ?? ""} onFile={setPosterFile} />
               </AdminField>
               <AdminField label="Вэбсайт ковер">
-                <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                  {coverSrc ? (
-                    <img src={coverSrc} alt="" className="aspect-[21/9] w-full object-cover" />
-                  ) : (
-                    <div className="grid aspect-[21/9] place-items-center px-4 text-center text-xs text-zinc-600">Өргөн ковер. Нүүр хуудсанд харагдана.</div>
-                  )}
-                </div>
-                <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" fileName={coverFile?.name ?? ""} onFile={setCoverFile} />
+                {mature ? (
+                  <p className="rounded-xl border border-white/10 px-4 py-3 text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй.</p>
+                ) : (
+                  <>
+                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                      {coverSrc ? (
+                        <img src={coverSrc} alt="" className="aspect-[21/9] w-full object-cover" />
+                      ) : (
+                        <div className="grid aspect-[21/9] place-items-center px-4 text-center text-xs text-zinc-600">Өргөн ковер. Нүүр хуудсанд харагдана.</div>
+                      )}
+                    </div>
+                    <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" fileName={coverFile?.name ?? ""} onFile={setCoverFile} />
+                  </>
+                )}
               </AdminField>
             </div>
             <AdminField label="Ангийн нэр">

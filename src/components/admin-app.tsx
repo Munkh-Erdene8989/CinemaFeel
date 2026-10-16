@@ -5,6 +5,7 @@ import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Lesson, Pa
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
+import { isMature } from "@/lib/mature";
 import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
@@ -935,7 +936,11 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
   const [mailed, setMailed] = useState("");
   const mailNote = useRef("");
   const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
-  const update = (key: string, value: string | number | boolean) => setForm((current) => ({ ...current, [key]: value }));
+  const mature = isMature(form);
+  const update = (key: string, value: string | number | boolean) => setForm((current) => {
+    const next = { ...current, [key]: value };
+    return isMature(next) ? { ...next, featured: false } : next;
+  });
   const rememberMail = (saved: ReleaseNotice) => {
     const email = releaseNote(saved);
     const note = [email, telegramNote(saved)].filter(Boolean).join(" ");
@@ -1076,6 +1081,11 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           </AdminField>
           <AdminField label="Үнэ (0 = үнэгүй)"><input value={form.price} onChange={(e) => update("price", Number(e.target.value))} type="number" min="0" className="admin-input" /></AdminField>
           <AdminField label="Он"><input value={form.year} onChange={(e) => update("year", Number(e.target.value))} type="number" className="admin-input" /></AdminField>
+          <AdminField label="Нас">
+            <select value={form.age} onChange={(e) => update("age", e.target.value)} className="admin-input">
+              {(["13+", "16+", "18+"].includes(form.age) ? ["13+", "16+", "18+"] : [form.age, "13+", "16+", "18+"]).map((age) => <option key={age}>{age}</option>)}
+            </select>
+          </AdminField>
           <div className="sm:col-span-2">
             <AdminField label="Тайлбар"><textarea value={form.description} onChange={(e) => update("description", e.target.value)} className="admin-input h-24 py-3" /></AdminField>
           </div>
@@ -1083,14 +1093,20 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           <AdminField label="Постер файл"><FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" onFile={(file) => file && onPoster(file)} /></AdminField>
           <div className="sm:col-span-2">
             <AdminField label="Вэбсайт ковер">
-              <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                {form.cover ? (
-                  <img src={form.cover} alt="" className="aspect-[21/9] w-full object-cover" />
-                ) : (
-                  <div className="grid aspect-[21/9] place-items-center px-6 text-center text-xs text-zinc-600">Нүүр хуудсын өргөн ковер. Онцлох контент дээр харагдана.</div>
-                )}
-              </div>
-              <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" onFile={(file) => file && onCover(file)} />
+              {mature ? (
+                <p className="rounded-xl border border-white/10 px-4 py-3 text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй. Постер нь зөвхөн +18 ангилалд харагдана.</p>
+              ) : (
+                <>
+                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
+                    {form.cover ? (
+                      <img src={form.cover} alt="" className="aspect-[21/9] w-full object-cover" />
+                    ) : (
+                      <div className="grid aspect-[21/9] place-items-center px-6 text-center text-xs text-zinc-600">Нүүр хуудсын өргөн ковер. Онцлох контент дээр харагдана.</div>
+                    )}
+                  </div>
+                  <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" onFile={(file) => file && onCover(file)} />
+                </>
+              )}
             </AdminField>
           </div>
           <div className="sm:col-span-2">
@@ -1122,7 +1138,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
             <select value={form.status} onChange={(e) => update("status", e.target.value)} className="admin-input"><option>Ноорог</option><option>Нийтлэгдсэн</option></select>
           </AdminField>
           <AdminField label="Онцлох">
-            <select value={form.featured ? "Тийм" : "Үгүй"} onChange={(e) => update("featured", e.target.value === "Тийм")} className="admin-input"><option>Үгүй</option><option>Тийм</option></select>
+            <select value={mature || !form.featured ? "Үгүй" : "Тийм"} disabled={mature} onChange={(e) => update("featured", e.target.value === "Тийм")} className="admin-input disabled:opacity-40"><option>Үгүй</option><option>Тийм</option></select>
           </AdminField>
         </div>
         <div className="mt-8">

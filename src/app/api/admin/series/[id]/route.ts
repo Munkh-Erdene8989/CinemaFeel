@@ -4,6 +4,7 @@ import { seriesStatus } from "@/lib/series-doc";
 import { deleteEpisodeMedia, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
+import { isMature } from "@/lib/mature";
 import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
 
 type Context = { params: Promise<{ id: string }> };
@@ -32,8 +33,12 @@ export async function PATCH(request: NextRequest, context: Context) {
   if (typeof body.posterPath === "string" && body.posterPath) {
     payload.image = await posterUrl(body.posterPath);
   }
-  if (typeof body.coverPath === "string" && body.coverPath) {
+  if (typeof body.coverPath === "string" && body.coverPath && !isMature(payload)) {
     payload.cover = await posterUrl(body.coverPath);
+  }
+  if (isMature(payload)) {
+    payload.featured = false;
+    payload.cover = "";
   }
   if (!payload.title) return jsonError("Киноны нэр оруулна уу.");
   let shareCode = String(current.data()?.shareCode ?? "");

@@ -1,3 +1,4 @@
+import { isMature, normalizeAge } from "./mature";
 import type { Access, Series, SeriesStatus } from "./types";
 
 export type SeriesRecord = Record<string, unknown>;
@@ -30,27 +31,30 @@ export function seriesFromRecord(id: string, data: SeriesRecord, now = Date.now(
     status: seriesStatus(data.status),
     featured: Boolean(data.featured),
     year: Number(data.year ?? new Date(now).getFullYear()),
-    age: String(data.age ?? "13+"),
+    age: normalizeAge(data.age),
     createdAt: Number(data.createdAt ?? now),
   };
 }
 
 export function seriesWritePayload(body: SeriesRecord, createdAt = Date.now()) {
   const price = Number(body.price ?? 0);
+  const genre = String(body.genre ?? "Драма");
+  const age = normalizeAge(body.age);
+  const mature = isMature({ age, genre });
   return {
     title: String(body.title ?? "").trim(),
-    genre: String(body.genre ?? "Драма"),
+    genre,
     description: String(body.description ?? ""),
     episodes: Math.max(1, Number(body.episodes ?? 1)),
     price,
     access: seriesAccess(price),
     image: String(body.image ?? ""),
-    cover: String(body.cover ?? ""),
+    cover: mature ? "" : String(body.cover ?? ""),
     views: Number(body.views ?? 0),
     status: seriesStatus(body.status),
-    featured: Boolean(body.featured),
+    featured: mature ? false : Boolean(body.featured),
     year: Number(body.year ?? new Date().getFullYear()),
-    age: String(body.age ?? "13+"),
+    age,
     createdAt,
   };
 }
