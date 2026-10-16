@@ -4,6 +4,34 @@ import { normalizeMnPhone } from "./verify-mn";
 const API = "https://api.wesend.mn/v1";
 const BULK_LIMIT = 1000;
 const SMS_CHAR_LIMIT = 300;
+const LATIN: Record<string, string> = {
+  а: "a", б: "b", в: "v", г: "g", д: "d", ё: "yo", ж: "j", з: "z", и: "i", й: "i",
+  к: "k", л: "l", м: "m", н: "n", о: "o", ө: "o", п: "p", р: "r", с: "s", т: "t",
+  у: "u", ү: "u", ф: "f", х: "kh", ц: "ts", ч: "ch", ш: "sh", щ: "sh", ъ: "", ы: "i",
+  ь: "", э: "e", ю: "yu", я: "ya",
+};
+const VOWELS = new Set(["а", "е", "ё", "и", "о", "ө", "у", "ү", "ы", "э", "ю", "я"]);
+
+export function cyrillicToLatin(input: string) {
+  let out = "";
+  let atWordStart = true;
+  let prevVowel = false;
+  for (const char of input) {
+    const lower = char.toLowerCase();
+    const mapped = lower === "е" ? (atWordStart || prevVowel ? "ye" : "e") : LATIN[lower];
+    if (mapped === undefined) {
+      out += char;
+      atWordStart = !/\p{L}/u.test(char);
+      prevVowel = false;
+      continue;
+    }
+    const cased = char === lower ? mapped : `${mapped.charAt(0).toUpperCase()}${mapped.slice(1)}`;
+    out += cased;
+    atWordStart = false;
+    prevVowel = VOWELS.has(lower);
+  }
+  return out;
+}
 
 export function wesendConfigured() {
   return Boolean(process.env.WESEND_API_KEY?.trim());
@@ -27,13 +55,15 @@ export function supportedMnMobile(input: string) {
 }
 
 export function releaseSmsText(title: string, link: string) {
-  const head = "Шинэ контент нэмэгдлээ: ";
-  const cleanTitle = title.replace(/\s+/g, " ").trim() || "Шинэ кино";
+  const head = "Shine kontent nemegdlee: ";
+  const cleanTitle = cyrillicToLatin(title).replace(/\s+/g, " ").trim() || "Shine kino";
   const tail = ` ${link}`;
   const room = SMS_CHAR_LIMIT - head.length - tail.length;
   if (room < 1) return `${head.trimEnd()}${tail}`.slice(0, SMS_CHAR_LIMIT);
-  const short = cleanTitle.length > room ? `${cleanTitle.slice(0, room - 1).trimEnd()}…` : cleanTitle;
-  return `${head}${short}${tail}`;
+  if (cleanTitle.length <= room) return `${head}${cleanTitle}${tail}`;
+  const ellipsis = "...";
+  if (room <= ellipsis.length) return `${head}${cleanTitle.slice(0, room)}${tail}`;
+  return `${head}${cleanTitle.slice(0, room - ellipsis.length).trimEnd()}${ellipsis}${tail}`;
 }
 
 type SendResult = { ok: true } | { ok: false; error: string };
