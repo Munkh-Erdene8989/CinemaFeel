@@ -8,16 +8,7 @@ export async function GET(request: NextRequest) {
   const gate = await requireSuper(request);
   if (gate.error) return gate.error;
   const snap = await adminDb().collection("admins").get();
-  const admins = [];
-  for (const item of snap.docs) {
-    let data = item.data() as Record<string, unknown>;
-    if (!data.inviteCode) {
-      const inviteCode = await uniqueInviteCode();
-      await item.ref.set({ inviteCode }, { merge: true });
-      data = { ...data, inviteCode };
-    }
-    admins.push(mapStaff(item.id, data));
-  }
+  const admins = snap.docs.map((item) => mapStaff(item.id, item.data() as Record<string, unknown>));
   admins.sort((a, b) => b.createdAt - a.createdAt);
   return NextResponse.json({ admins });
 }

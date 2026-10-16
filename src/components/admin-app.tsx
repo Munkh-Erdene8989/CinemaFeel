@@ -118,6 +118,14 @@ export function AdminApp() {
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [inviteCode, setInviteCode] = useState("");
+  const [userCount, setUserCount] = useState(0);
+  const [ready, setReady] = useState(false);
+  const [usersReady, setUsersReady] = useState(false);
+  const [paymentsReady, setPaymentsReady] = useState(false);
+  const [lessonsReady, setLessonsReady] = useState(false);
+  const usersFull = useRef(false);
+  const paymentsFull = useRef(false);
+  const lessonsFull = useRef(false);
   const [notice, setNotice] = useState("");
   const termsAccepted = useRef(false);
   const guideDone = useRef(false);
@@ -143,31 +151,29 @@ export function AdminApp() {
     setCreatorRevenue(report);
   };
 
-  const reload = async () => {
-    const sessionData = await adminFetch<AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean }>("/api/admin/session");
-    const creator = sessionData.role === "admin";
-    const [seriesData, settingsData, lessonData] = await Promise.all([
-      adminFetch<{ series: SeriesWithEpisodes[] }>("/api/admin/series"),
-      adminFetch<{ settings: Settings }>("/api/admin/settings"),
-      adminFetch<{ lessons: Lesson[] }>("/api/admin/lessons"),
-      creator ? loadCreatorRevenue(revenueDays) : Promise.resolve(),
-    ]);
-    setSession(sessionData);
-    setInviteCode(sessionData.inviteCode || "");
-    if (!termsAccepted.current) setTermsOpen(creator && sessionData.termsSeen !== true);
-    if (!guideDone.current && creator && sessionData.termsSeen === true && sessionData.guideSeen !== true) setGuideOpen(true);
-    setContent(seriesData.series);
-    setSettings(settingsData.settings);
-    setLessons(lessonData.lessons);
-    if (!creator) {
-      const [userData, paymentData, staffData] = await Promise.all([
-        adminFetch<{ users: AppUser[] }>("/api/admin/users"),
-        adminFetch<{ payments: Payment[] }>("/api/admin/payments"),
-        adminFetch<{ admins: StaffAdmin[] }>("/api/admin/staff"),
-      ]);
+  const loadDirectory = async () => {
+    if (usersFull.current) return;
+    usersFull.current = true;
+    try {
+      const userData = await adminFetch<{ users: AppUser[] }>("/api/admin/users");
       setUsers(userData.users);
+      setUsersReady(true);
+    } catch (error) {
+      usersFull.current = false;
+      notify(error instanceof Error ? error.message : "Хэрэглэгчдийг ачаалж чадсангүй.");
+    }
+  };
+
+  const loadPayments = async () => {
+    if (paymentsFull.current) return;
+    paymentsFull.current = true;
+    try {
+      const paymentData = await adminFetch<{ payments: Payment[] }>("/api/admin/payments");
       setPayments(paymentData.payments);
-      setStaff(staffData.admins);
+      setPaymentsReady(true);
+    } catch (error) {
+      paymentsFull.current = false;
+      notify(error instanceof Error ? error.message : "Төлбөрийг ачаалж чадсангүй.");
     }
   };
 
@@ -243,8 +249,55 @@ export function AdminApp() {
   };
 
   useEffect(() => {
-    reload().catch((error: Error) => notify(error.message));
+    let ignore = false;
+    adminFetch<{
+      session: AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean };
+      series: SeriesWithEpisodes[];
+      settings: Settings;
+      payments: Payment[];
+      users: AppUser[];
+      userCount: number;
+      staff: StaffAdmin[];
+      revenue: RevenueReport | null;
+    }>("/api/admin/bootstrap")
+      .then((data) => {
+        if (ignore) return;
+        const creator = data.session.role === "admin";
+        setSession(data.session);
+        setInviteCode(data.session.inviteCode || "");
+        if (!termsAccepted.current) setTermsOpen(creator && data.session.termsSeen !== true);
+        if (!guideDone.current && creator && data.session.termsSeen === true && data.session.guideSeen !== true) setGuideOpen(true);
+        setContent(data.series);
+        setSettings(data.settings);
+        setPayments(data.payments);
+        setUsers(data.users);
+        setUserCount(data.userCount);
+        setStaff(data.staff);
+        setCreatorRevenue(data.revenue);
+        setReady(true);
+      })
+      .catch((error: Error) => {
+        if (!ignore) notify(error.message);
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
+
+  useEffect(() => {
+    if (!ready || session?.role !== "super") return;
+    if (section === "Хэрэглэгчид") void loadDirectory();
+    if (section === "Төлбөр" || section === "Хэрэглэгчид" || section === "Контент бүтээгчид") void loadPayments();
+    if ((section === "Мэдлэг" || section === "Контент бүтээгчид") && !lessonsFull.current) {
+      lessonsFull.current = true;
+      refreshLessons()
+        .then(() => setLessonsReady(true))
+        .catch((error: Error) => {
+          lessonsFull.current = false;
+          notify(error.message);
+        });
+    }
+  }, [ready, section, session?.role]);
 
   const guiding = guideOpen && !termsOpen;
   const [pageSize, setPageSizeState] = useState<AdminPageSize>(20);
@@ -253,6 +306,7 @@ export function AdminApp() {
     setPageSizeState(size);
     window.localStorage.setItem(adminPageSizeKey, String(size));
   };
+  if (!ready) return <main className="grid min-h-screen place-items-center bg-[#0c0c0f] text-sm text-zinc-500">Ачааллаж байна...</main>;
 
   return (
     <AdminPageSizeContext.Provider value={{ pageSize, setPageSize }}>
@@ -291,7 +345,7 @@ export function AdminApp() {
               <button key={label} onClick={() => (guiding ? showGuideStep(creatorGuideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && creatorGuideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
             ))}
           </div>
-          {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} />}
+          {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} />}
           {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} days={revenueDays} inviteCode={inviteCode} notify={notify} />}
           {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} refreshSeries={refreshSeries} onGenres={(genres) => setSettings((current) => ({ ...current, genres }))} onStatus={async (film) => {
             const status = film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн";
@@ -299,11 +353,13 @@ export function AdminApp() {
             setContent((current) => current.map((item) => item.id === film.id ? { ...item, status } : item));
             return saved;
           }} notify={notify} />}
-          {section === "Мэдлэг" && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
+          {section === "Мэдлэг" && lessonsReady && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
+          {section === "Мэдлэг" && !lessonsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
-          {section === "Хэрэглэгчид" && superAdmin && <UsersAdmin users={users} payments={payments} content={content} onUsers={setUsers} notify={notify} />}
+          {section === "Хэрэглэгчид" && superAdmin && usersReady && paymentsReady && <UsersAdmin users={users} payments={payments} content={content} onUsers={setUsers} notify={notify} />}
+          {section === "Хэрэглэгчид" && superAdmin && (!usersReady || !paymentsReady) && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Хөнгөлөлт" && superAdmin && <DiscountsAdmin notify={notify} />}
-          {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} notify={notify} onRefunded={(payment) => {
+          {section === "Төлбөр" && superAdmin && paymentsReady && <PaymentsAdmin payments={payments} notify={notify} onRefunded={(payment) => {
             setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, status: "Буцаагдсан" } : item));
             if (isSubscriptionCheckout(payment.mode)) {
               const revoked = revokePass();
@@ -311,6 +367,7 @@ export function AdminApp() {
             }
             if (payment.mode === "creator" && payment.creatorId) setStaff((current) => current.map((admin) => admin.id === payment.creatorId ? { ...admin, active: false, paid: false } : admin));
           }} />}
+          {section === "Төлбөр" && superAdmin && !paymentsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} notify={notify} />}
           {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} onSaved={setSettings} notify={notify} />}
         </div>
@@ -503,7 +560,7 @@ function SalesChart({ title, hint, total, buckets, labelEvery }: { title: string
   );
 }
 
-function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[] }) {
+function Dashboard({ content, users, payments, userCount }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[]; userCount: number }) {
   const [range, setRange] = useState("7");
   const [hourDay, setHourDay] = useState(() => startOfLocalDay(Date.now()));
   const days = Number(range);
@@ -528,7 +585,7 @@ function Dashboard({ content, users, payments }: { content: SeriesWithEpisodes[]
   const monthlyPage = usePaged(monthly, range);
   const stats = [
     ["Нийт орлого", `₮${Math.round(revenue).toLocaleString("mn-MN")}`, `${recent.length} гүйлгээ`, "chart"],
-    ["Идэвхтэй эрх", activeMonthly.toString(), `${users.length} хэрэглэгч`, "users"],
+    ["Идэвхтэй эрх", activeMonthly.toString(), `${userCount} хэрэглэгч`, "users"],
     ["Нийт үзэлт", formatViews(content.reduce((sum, film) => sum + film.views, 0)), "бодит тоолуур", "play"],
     ["Контент", content.length.toString(), `${content.filter((film) => film.status === "Нийтлэгдсэн").length} нийтлэгдсэн`, "film"],
   ];
@@ -724,7 +781,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black">Контентын сан</h2>
-          <p className="mt-1 text-sm text-zinc-600">{content.length} цуврал · {content.reduce((sum, film) => sum + film.episodeList.length, 0)} анги</p>
+          <p className="mt-1 text-sm text-zinc-600">{content.length} цуврал · {content.reduce((sum, film) => sum + film.episodes, 0)} анги</p>
         </div>
         <div className="flex flex-wrap gap-2">
           <button onClick={() => setYoutubeOpen(true)} className="flex items-center gap-2 rounded-xl border border-white/15 px-4 py-3 text-xs font-extrabold text-white">
@@ -779,7 +836,7 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
                     <img src={film.image} className="h-12 w-9 rounded object-cover" alt="" />
                     <div>
                       <b className="text-sm">{film.title}</b>
-                      <p className="mt-1 text-zinc-600">{film.episodeList.length || film.episodes} анги</p>
+                      <p className="mt-1 text-zinc-600">{film.episodes} анги</p>
                     </div>
                   </div>
                 </td>
@@ -857,6 +914,18 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     age: film?.age ?? "13+",
   });
   const [episodes, setEpisodes] = useState<Episode[]>(film?.episodeList ?? []);
+  useEffect(() => {
+    if (!film?.id) return;
+    let ignore = false;
+    adminFetch<{ episodes: Episode[] }>(`/api/admin/series/${film.id}/episodes`)
+      .then((data) => {
+        if (!ignore) setEpisodes(data.episodes);
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+    };
+  }, [film?.id]);
   const [seriesId, setSeriesId] = useState(film?.id ?? "");
   const [shareCode, setShareCode] = useState(film?.shareCode ?? "");
   const [copied, setCopied] = useState(false);
@@ -1891,7 +1960,7 @@ function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onCl
                 <tr key={item.id} className="border-b border-white/[.05] last:border-0">
                   <td className="px-4 py-3 font-bold">{item.title}</td>
                   <td className="px-4 py-3 text-zinc-400">{item.status}</td>
-                  <td className="px-4 py-3 text-zinc-400">{item.episodeList.length}</td>
+                  <td className="px-4 py-3 text-zinc-400">{item.episodes}</td>
                   <td className="px-4 py-3 text-zinc-400">{item.uniqueViews}</td>
                   <td className="px-4 py-3">{item.access === "free" ? "Үнэгүй" : formatMoney(item.price)}</td>
                 </tr>

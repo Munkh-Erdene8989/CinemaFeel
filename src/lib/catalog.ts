@@ -37,31 +37,16 @@ export function seriesPayload(body: Record<string, unknown>, createdAt = Date.no
 
 export async function listSeries(): Promise<SeriesWithEpisodes[]> {
   const snap = await adminDb().collection("series").get();
-  const shareCodes = new Map<string, string>();
-  const reserved = new Set<string>();
-  for (const item of snap.docs) {
-    const code = String(item.data().shareCode ?? "");
-    if (!code) continue;
-    reserved.add(code);
-    shareCodes.set(item.id, code);
-  }
-  for (const item of snap.docs) {
-    if (shareCodes.has(item.id)) continue;
-    const shareCode = await uniqueShareCode(reserved);
-    reserved.add(shareCode);
-    shareCodes.set(item.id, shareCode);
-    await item.ref.set({ shareCode }, { merge: true });
-  }
-  const series = await Promise.all(
-    snap.docs.map(async (item) => {
-      const episodes = await item.ref.collection("episodes").get();
-      const episodeList: Episode[] = episodes.docs
-        .map((episode) => ({ id: episode.id, ...(episode.data() as Omit<Episode, "id">) }))
-        .sort((a, b) => a.number - b.number);
-      return { ...mapSeries(item.id, { ...item.data(), shareCode: shareCodes.get(item.id) ?? "" }), episodeList };
-    }),
-  );
-  return series.sort((a, b) => b.createdAt - a.createdAt);
+  return snap.docs
+    .map((item) => ({ ...mapSeries(item.id, item.data()), episodeList: [] }))
+    .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function listEpisodes(seriesRef: DocumentReference): Promise<Episode[]> {
+  const episodes = await seriesRef.collection("episodes").get();
+  return episodes.docs
+    .map((episode) => ({ id: episode.id, ...(episode.data() as Omit<Episode, "id">) }))
+    .sort((a, b) => a.number - b.number);
 }
 
 export async function readManageableSeries(session: AdminSession, id: string) {

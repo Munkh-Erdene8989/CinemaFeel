@@ -60,6 +60,7 @@ export function YoutubeEpisodeForm({
   onSaved: (message: string) => Promise<void>;
 }) {
   const [seriesId, setSeriesId] = useState("new");
+  const [nextNumber, setNextNumber] = useState(1);
   const [created, setCreated] = useState<{ id: string; title: string } | null>(null);
   const [title, setTitle] = useState("");
   const [genre, setGenre] = useState(genres[0] ?? "Драма");
@@ -77,6 +78,24 @@ export function YoutubeEpisodeForm({
   const [error, setError] = useState("");
   const posterPreview = useObjectUrl(posterFile);
   const coverPreview = useObjectUrl(coverFile);
+
+  useEffect(() => {
+    if (seriesId === "new") {
+      setNextNumber(1);
+      return;
+    }
+    let ignore = false;
+    adminFetch<{ episodes: { id: string }[] }>(`/api/admin/series/${seriesId}/episodes`)
+      .then((data) => {
+        if (!ignore) setNextNumber(data.episodes.length + 1);
+      })
+      .catch(() => {
+        if (!ignore) setNextNumber(1);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [seriesId]);
 
   const parsed = youtubeUrl.trim() ? parseYouTubeUrl(youtubeUrl) : null;
   const cueCount = useMemo(() => (subtitleText.trim() ? parseSrt(subtitleText).length : 0), [subtitleText]);
@@ -134,7 +153,8 @@ export function YoutubeEpisodeForm({
           body: JSON.stringify({ coverPath: storagePath }),
         });
       }
-      const number = (content.find((film) => film.id === id)?.episodeList.length ?? 0) + 1;
+      const listed = await adminFetch<{ episodes: { id: string }[] }>(`/api/admin/series/${id}/episodes`);
+      const number = listed.episodes.length + 1;
       setBusy("Анги хадгалж байна...");
       const saved = await adminFetch<{ telegramSent?: boolean; telegramError?: string; telegramPending?: string }>(`/api/admin/series/${id}/episodes`, {
         method: "POST",
@@ -225,7 +245,7 @@ export function YoutubeEpisodeForm({
               </AdminField>
             </div>
             <AdminField label="Ангийн нэр">
-              <input value={episodeTitle} onChange={(event) => setEpisodeTitle(event.target.value)} className="admin-input" placeholder={selected ? `${selected.episodeList.length + 1}-р анги` : "1-р анги"} />
+              <input value={episodeTitle} onChange={(event) => setEpisodeTitle(event.target.value)} className="admin-input" placeholder={`${nextNumber}-р анги`} />
             </AdminField>
             <AdminField label="YouTube URL">
               <input value={youtubeUrl} onChange={(event) => setYoutubeUrl(event.target.value)} className="admin-input" placeholder="https://www.youtube.com/watch?v=..." />
