@@ -5,6 +5,7 @@ import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Lesson, Pa
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
+import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
 import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
@@ -59,6 +60,11 @@ function telegramNote(saved: ReleaseNotice) {
 function shareHref(code: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `${origin}/s/${code}`;
+}
+
+function creatorSiteHref(username: string) {
+  const origin = typeof window === "undefined" ? "" : window.location.origin;
+  return `${origin}/c/${username}`;
 }
 
 async function copyText(value: string) {
@@ -119,6 +125,9 @@ export function AdminApp() {
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
   const [inviteCode, setInviteCode] = useState("");
+  const [siteUsername, setSiteUsername] = useState("");
+  const [cornerName, setCornerName] = useState("");
+  const [cornerEdits, setCornerEdits] = useState(0);
   const [userCount, setUserCount] = useState(0);
   const [ready, setReady] = useState(false);
   const [usersReady, setUsersReady] = useState(false);
@@ -252,7 +261,7 @@ export function AdminApp() {
   useEffect(() => {
     let ignore = false;
     adminFetch<{
-      session: AdminSession & { inviteCode?: string; termsSeen?: boolean; guideSeen?: boolean };
+      session: AdminSession & { inviteCode?: string; username?: string; cornerName?: string; cornerNameEdits?: number; termsSeen?: boolean; guideSeen?: boolean };
       series: SeriesWithEpisodes[];
       settings: Settings;
       payments: Payment[];
@@ -266,6 +275,9 @@ export function AdminApp() {
         const creator = data.session.role === "admin";
         setSession(data.session);
         setInviteCode(data.session.inviteCode || "");
+        setSiteUsername(data.session.username || "");
+        setCornerName(data.session.cornerName || "");
+        setCornerEdits(Number(data.session.cornerNameEdits || 0));
         if (!termsAccepted.current) setTermsOpen(creator && data.session.termsSeen !== true);
         if (!guideDone.current && creator && data.session.termsSeen === true && data.session.guideSeen !== true) setGuideOpen(true);
         setContent(data.series);
@@ -323,9 +335,9 @@ export function AdminApp() {
             </button>
           ))}
         </nav>
-        <a href="/" className="absolute bottom-6 left-5 right-5 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-zinc-500 hover:text-white">
+        <a href={siteUsername && !superAdmin ? `/c/${siteUsername}` : "/"} className="absolute bottom-6 left-5 right-5 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-zinc-500 hover:text-white">
           <Icon name="logout" className="h-4 w-4" />
-          Сайт руу буцах
+          {siteUsername && !superAdmin ? "Миний сайт" : "Сайт руу буцах"}
         </a>
       </aside>
       <main className="lg:ml-64">
@@ -335,7 +347,7 @@ export function AdminApp() {
             <h1 className="mt-1 text-lg font-black">{section}</h1>
           </div>
           <div className="flex items-center gap-3">
-            <a href="/" className="text-xs font-bold text-zinc-500 lg:hidden">Сайт руу буцах</a>
+            <a href={siteUsername && !superAdmin ? `/c/${siteUsername}` : "/"} className="text-xs font-bold text-zinc-500 lg:hidden">{siteUsername && !superAdmin ? "Миний сайт" : "Сайт руу буцах"}</a>
             <button onClick={() => fetch("/api/admin/logout", { method: "POST" }).then(() => (window.location.href = "/admin/login"))} className="text-xs font-bold text-zinc-500">Гарах</button>
             <span className="grid h-9 w-9 place-items-center rounded-full bg-[#ff3d56] text-xs font-black">{(superAdmin ? "S" : session?.name || "A").slice(0, 1).toUpperCase()}</span>
           </div>
@@ -347,7 +359,7 @@ export function AdminApp() {
             ))}
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} />}
-          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} days={revenueDays} inviteCode={inviteCode} notify={notify} />}
+          {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} days={revenueDays} inviteCode={inviteCode} username={siteUsername} cornerName={cornerName} cornerEdits={cornerEdits} onCorner={(name, edits) => { setCornerName(name); setCornerEdits(edits); }} notify={notify} />}
           {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} refreshSeries={refreshSeries} onGenres={(genres) => setSettings((current) => ({ ...current, genres }))} onStatus={async (film) => {
             const status = film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн";
             const saved = await adminFetch<ReleaseNotice>(`/api/admin/series/${film.id}`, { method: "PATCH", body: JSON.stringify({ status }) });
@@ -681,7 +693,11 @@ function Dashboard({ content, users, payments, userCount }: { content: SeriesWit
   );
 }
 
-function AdminHome({ content, mine, days, inviteCode, notify }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue; days: RevenueWindow; inviteCode: string; notify: (message: string) => void }) {
+function AdminHome({ content, mine, days, inviteCode, username, cornerName, cornerEdits, onCorner, notify }: { content: SeriesWithEpisodes[]; mine?: AdminRevenue; days: RevenueWindow; inviteCode: string; username: string; cornerName: string; cornerEdits: number; onCorner: (cornerName: string, edits: number) => void; notify: (message: string) => void }) {
+  const title = creatorCornerTitle(username, cornerName);
+  const [draft, setDraft] = useState(title);
+  const [savingCorner, setSavingCorner] = useState(false);
+  const remaining = Math.max(0, CORNER_NAME_LIMIT - cornerEdits);
   const referrals = mine?.referrals ?? [];
   const stats = [
     ["Миний орлого", formatMoney(mine?.total ?? 0), "шууд 80% + сарын хувь + урилга", "card"],
@@ -700,6 +716,46 @@ function AdminHome({ content, mine, days, inviteCode, notify }: { content: Serie
             <p className="mt-1 font-black tracking-[0.22em]">{inviteCode}</p>
           </div>
           <button onClick={() => copyText(inviteCode).then((copied) => notify(copied ? "Урилгын код хуулагдлаа." : "Кодыг гараар хуулна уу."))} className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-zinc-300">Хуулах</button>
+        </div>
+      )}
+      {username && (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-xs font-bold text-zinc-500">Таны хуваалцах сайт</p>
+            <p className="mt-1 truncate font-bold">{creatorSiteHref(username)}</p>
+          </div>
+          <div className="flex gap-2">
+            <a href={`/c/${username}`} target="_blank" rel="noreferrer" className="rounded-xl border border-white/10 px-4 py-2 text-xs font-bold text-zinc-300">Нээх</a>
+            <button onClick={() => copyText(creatorSiteHref(username)).then((copied) => notify(copied ? "Сайтын линк хуулагдлаа." : "Линкийг гараар хуулна уу."))} className="rounded-xl bg-white px-4 py-2 text-xs font-extrabold text-black">Хуулах</button>
+          </div>
+        </div>
+      )}
+      {username && (
+        <div className="mt-5 rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <label className="min-w-0 flex-1">
+              <span className="text-xs font-bold text-zinc-500">Кино булангийн нэр</span>
+              <input value={draft} onChange={(event) => setDraft(event.target.value)} disabled={remaining === 0} maxLength={40} className="admin-input mt-2" />
+            </label>
+            <button
+              disabled={savingCorner || remaining === 0 || draft.trim().replace(/\s+/g, " ") === title}
+              onClick={() => {
+                setSavingCorner(true);
+                adminFetch<{ cornerName: string; title: string; edits: number; remaining: number }>("/api/admin/corner", { method: "POST", body: JSON.stringify({ cornerName: draft }) })
+                  .then((saved) => {
+                    onCorner(saved.cornerName, saved.edits);
+                    setDraft(saved.title);
+                    notify(saved.edits === cornerEdits ? "Нэр хэвээрээ байна." : "Кино булангийн нэр солигдлоо.");
+                  })
+                  .catch((error: Error) => notify(error.message))
+                  .finally(() => setSavingCorner(false));
+              }}
+              className="rounded-xl bg-white px-4 py-2 text-xs font-extrabold text-black disabled:opacity-40"
+            >
+              {savingCorner ? "Хадгалж байна..." : "Нэр солих"}
+            </button>
+          </div>
+          <p className="mt-2 text-[11px] text-zinc-600">{remaining === 0 ? "2 удаа сольсон тул нэр түгжигдлээ." : `Одоо: ${title}. ${remaining} удаа солих боломжтой.`}</p>
         </div>
       )}
       <div className="mt-5 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
@@ -1929,10 +1985,12 @@ function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onCl
         <div className="pr-10">
           <h2 className="text-2xl font-black">{admin.name || "Контент бүтээгч"}</h2>
           <p className={`mt-1 text-xs font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"} · {admin.source === "self" ? "Өөрөө бүртгүүлсэн" : "Гараар нэмсэн"}</p>
+          {admin.active && admin.username && <a href={`/c/${admin.username}`} target="_blank" rel="noreferrer" className="mt-3 inline-block text-sm font-bold text-[#ff536a] hover:underline">Нээлттэй хуудас · /c/{admin.username}</a>}
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <DetailFact label="Овог, нэр">{fullName}</DetailFact>
           <DetailFact label="Нэвтрэх нэр">{admin.username}</DetailFact>
+          <DetailFact label="Кино булан">{creatorCornerTitle(admin.username, admin.cornerName)} · {Math.max(0, CORNER_NAME_LIMIT - admin.cornerNameEdits)} солих эрх</DetailFact>
           <DetailFact label="Контентын төрөл">{admin.contentType}</DetailFact>
           <DetailFact label="Утас">{admin.phone ? formatPhone(admin.phone) : ""}</DetailFact>
           <DetailFact label="Email">{admin.email}</DetailFact>

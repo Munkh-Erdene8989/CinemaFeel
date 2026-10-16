@@ -22,7 +22,7 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout, ready } = useSite();
+  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout, ready, homeHref } = useSite();
   const { allowed, allow } = useMatureConsent();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const matureLocked = Boolean(film && isMature(film) && allowed !== true);
@@ -170,7 +170,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   if (film && isMature(film) && !allowed) {
     return (
       <section className="min-h-screen">
-        <MatureGate onAccept={allow} onDecline={() => router.push("/")} />
+        <MatureGate onAccept={allow} onDecline={() => router.push(homeHref)} />
       </section>
     );
   }
@@ -179,7 +179,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     return (
       <section data-rise className="mx-auto min-h-screen max-w-3xl px-5 pt-32">
         <h1 className="text-3xl font-black">Кино олдсонгүй</h1>
-        <a href="/" className="mt-6 inline-block text-sm font-bold text-[#ff6679]">Нүүр лүү буцах</a>
+        <a href={homeHref} className="mt-6 inline-block text-sm font-bold text-[#ff6679]">Нүүр лүү буцах</a>
       </section>
     );
   }

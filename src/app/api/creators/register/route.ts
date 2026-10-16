@@ -34,6 +34,8 @@ export async function POST(request: NextRequest) {
   const created = !current;
   const profile = {
     username: normalizeUsername(draft.username),
+    cornerName: draft.cornerName,
+    cornerNameEdits: 0,
     name: `${draft.lastName} ${draft.firstName}`,
     lastName: draft.lastName,
     firstName: draft.firstName,

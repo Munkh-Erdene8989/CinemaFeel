@@ -38,6 +38,8 @@ export type StaffAdmin = {
   portfolio: string;
   experience: string;
   termsAcceptedAt: number;
+  cornerName: string;
+  cornerNameEdits: number;
 };
 
 export const CREATOR_FEE = 10000;

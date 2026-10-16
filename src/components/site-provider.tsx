@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { creatorUsernameFromPath, type PublicCreator } from "@/lib/creator-site";
 import { seriesFromRecord } from "@/lib/series-doc";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
 import { defaultSettings, mergeSettings } from "@/lib/types";
@@ -28,6 +29,9 @@ type SiteContextValue = {
   subscribed: boolean;
   settings: Settings;
   ready: boolean;
+  creatorSite: PublicCreator | null;
+  creatorLookup: "idle" | "loading" | "ready" | "missing";
+  homeHref: string;
   openFilm: (film: Series) => void;
   openAuth: () => void;
   beginCheckout: (mode: CheckoutMode, film?: Series | null) => void;
@@ -52,6 +56,9 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const [owned, setOwned] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [ready, setReady] = useState(false);
+  const [creatorSite, setCreatorSite] = useState<PublicCreator | null>(null);
+  const [creatorLookup, setCreatorLookup] = useState<"idle" | "loading" | "ready" | "missing">("idle");
+  const creatorNameRef = useRef("");
   const [authOpen, setAuthOpen] = useState(false);
   const [joinOpen, setJoinOpen] = useState(false);
   const [selected, setSelected] = useState<Series | null>(null);
@@ -138,6 +145,49 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     };
   }, [user]);
 
+  useEffect(() => {
+    const username = creatorUsernameFromPath(pathname);
+    if (!username) {
+      if (pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/account") || pathname.startsWith("/terms")) {
+        creatorNameRef.current = "";
+        setCreatorSite(null);
+        setCreatorLookup("idle");
+      }
+      return;
+    }
+    if (creatorNameRef.current === username) return;
+    creatorNameRef.current = username;
+    setCreatorLookup("loading");
+    setCreatorSite(null);
+    fetch(`/api/creators/${encodeURIComponent(username)}`)
+      .then(async (response) => {
+        if (creatorNameRef.current !== username) return;
+        if (!response.ok) {
+          setCreatorSite(null);
+          setCreatorLookup("missing");
+          return;
+        }
+        const data = (await response.json()) as PublicCreator;
+        if (data.username !== username || !data.id) {
+          setCreatorSite(null);
+          setCreatorLookup("missing");
+          return;
+        }
+        setCreatorSite({
+          id: String(data.id),
+          name: String(data.name || username),
+          username,
+          contentType: String(data.contentType || ""),
+        });
+        setCreatorLookup("ready");
+      })
+      .catch(() => {
+        if (creatorNameRef.current !== username) return;
+        setCreatorSite(null);
+        setCreatorLookup("missing");
+      });
+  }, [pathname]);
+
   const beginCheckout = (mode: CheckoutMode, film?: Series | null) => {
     if (film) setSelected(film);
     if (!user) {
@@ -157,6 +207,14 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     router.push(`/watch/${film.id}/1`);
   };
 
+  const routeUsername = creatorUsernameFromPath(pathname);
+  const watchOwner = pathname.startsWith("/watch/") ? series.find((item) => item.id === decodeURIComponent(pathname.split("/")[2] || ""))?.ownerId ?? "" : "";
+  const creatorMatchesRoute = Boolean(routeUsername && creatorSite?.username === routeUsername);
+  const creatorChrome = (Boolean(routeUsername) && creatorLookup !== "missing" && (creatorLookup !== "ready" || creatorMatchesRoute))
+    || (!routeUsername && Boolean(creatorSite) && watchOwner !== "" && watchOwner === creatorSite?.id);
+  const homeHref = creatorChrome ? `/c/${creatorSite?.username || routeUsername}` : "/";
+  const brandName = creatorSite?.name || routeUsername;
+
   const value = useMemo<SiteContextValue>(
     () => ({
       user,
@@ -167,16 +225,19 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       subscribed,
       settings,
       ready,
+      creatorSite,
+      creatorLookup,
+      homeHref,
       openFilm: setSelected,
       openAuth: () => setAuthOpen(true),
       beginCheckout,
       logout: async () => {
         if (firebaseConfigured()) await signOut(clientAuth());
         setProfile(null);
-        router.push("/");
+        router.push(homeHref);
       },
     }),
-    [user, profile, series, payments, owned, subscribed, settings, ready],
+    [user, profile, series, payments, owned, subscribed, settings, ready, creatorSite, creatorLookup, homeHref],
   );
 
   if (settings.maintenance) {
@@ -192,7 +253,10 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : pathname.startsWith("/terms") ? "terms" : "home";
+  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : pathname.startsWith("/terms") ? "terms" : creatorChrome ? "creator" : "home";
+  const dock = creatorChrome
+    ? [[homeHref, "home", "Нүүр"], ["/account", "user", "Профайл"]]
+    : [["/", "home", "Нүүр"], ["/library", "film", "Сан"], ["/account", "user", "Профайл"]];
 
   return (
     <SiteContext.Provider value={value}>
@@ -201,17 +265,25 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
         <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-8 px-5 md:px-10 lg:px-16">
             <span data-chrome="logo">
-              <Logo href="/" />
+              {creatorChrome ? (
+                <a href={homeHref} className="block max-w-[46vw] truncate text-lg font-black tracking-tight sm:max-w-xs sm:text-xl" aria-label={`${brandName} нүүр`}>{brandName}</a>
+              ) : (
+                <Logo href="/" />
+              )}
             </span>
-            <nav className="ml-6 hidden items-center gap-7 text-sm font-semibold lg:flex">
-              <a data-chrome="link" href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
-              <a data-chrome="link" href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
-            </nav>
+            {!creatorChrome && (
+              <nav className="ml-6 hidden items-center gap-7 text-sm font-semibold lg:flex">
+                <a data-chrome="link" href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
+                <a data-chrome="link" href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
+              </nav>
+            )}
             <div className="ml-auto flex items-center gap-2">
-              <button data-chrome="action" onClick={() => setJoinOpen(true)} className="flex h-10 shrink-0 items-center rounded-full bg-[#ff3d56] px-3 text-[11px] font-bold text-white sm:px-4 sm:text-xs">
-                <span className="sm:hidden">Нэгдэх</span>
-                <span className="hidden sm:inline">Бидэнтэй нэгдээрэй</span>
-              </button>
+              {!creatorChrome && (
+                <button data-chrome="action" onClick={() => setJoinOpen(true)} className="flex h-10 shrink-0 items-center rounded-full bg-[#ff3d56] px-3 text-[11px] font-bold text-white sm:px-4 sm:text-xs">
+                  <span className="sm:hidden">Нэгдэх</span>
+                  <span className="hidden sm:inline">Бидэнтэй нэгдээрэй</span>
+                </button>
+              )}
               {user ? (
                 <>
                   <a data-chrome="action" href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
@@ -229,7 +301,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
         <div data-page>{children}</div>
         <footer data-rise className="mx-auto max-w-[1440px] border-t border-white/[.07] px-5 py-10 text-xs text-zinc-600 md:px-10 lg:px-16">
           <div className="flex flex-col justify-between gap-3 sm:flex-row">
-            <p>© {new Date().getFullYear()} CinemaFeel. Богино түүх, том мэдрэмж.</p>
+            <p>© {new Date().getFullYear()} {creatorChrome ? `${brandName}. CinemaFeel дээр.` : "CinemaFeel. Богино түүх, том мэдрэмж."}</p>
             <div className="flex gap-5">
               <a href="/terms" className={pathname === "/terms" ? "text-zinc-300" : "hover:text-white"}>Үйлчилгээний нөхцөл</a>
               <a href={`mailto:${settings.email}`}>Тусламж</a>
@@ -237,21 +309,20 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
           </div>
         </footer>
         <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
-          {[
-            ["/", "home", "Нүүр"],
-            ["/library", "film", "Сан"],
-            ["/account", "user", "Профайл"],
-          ].map(([href, icon, label]) => (
-            <a key={href} href={user || href !== "/account" ? href : "#"} onClick={(event) => {
-              if (href === "/account" && !user) {
-                event.preventDefault();
-                setAuthOpen(true);
-              }
-            }} className={`flex flex-col items-center gap-1 text-[10px] font-bold ${view === (href === "/" ? "home" : href.slice(1)) ? "text-white" : "text-zinc-500"}`}>
-              <Icon name={icon} className="h-5 w-5" />
-              {label}
-            </a>
-          ))}
+          {dock.map(([href, icon, label]) => {
+            const active = href === homeHref ? view === "creator" || (href === "/" && view === "home") : view === href.slice(1);
+            return (
+              <a key={label} href={user || href !== "/account" ? href : "#"} onClick={(event) => {
+                if (href === "/account" && !user) {
+                  event.preventDefault();
+                  setAuthOpen(true);
+                }
+              }} className={`flex flex-col items-center gap-1 text-[10px] font-bold ${active ? "text-white" : "text-zinc-500"}`}>
+                <Icon name={icon} className="h-5 w-5" />
+                {label}
+              </a>
+            );
+          })}
         </nav>
         {joinOpen && <JoinModal onClose={() => setJoinOpen(false)} />}
         {authOpen && (

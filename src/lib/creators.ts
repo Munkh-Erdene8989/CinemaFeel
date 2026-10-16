@@ -1,3 +1,4 @@
+import { validCornerName, normalizeCornerName } from "./creator-site";
 import { CREATOR_FEE, creatorContentTypes } from "./types";
 import { normalizeMnPhone } from "./verify-mn";
 import { normalizeInviteCode, normalizeUsername, validUsername } from "./staff";
@@ -10,6 +11,7 @@ export type CreatorDraft = {
   lastName: string;
   firstName: string;
   username: string;
+  cornerName: string;
   password: string;
   phone: string;
   email: string;
@@ -25,6 +27,7 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
   const lastName = String(body.lastName ?? "").trim().replace(/\s+/g, " ");
   const firstName = String(body.firstName ?? "").trim().replace(/\s+/g, " ");
   const username = normalizeUsername(String(body.username ?? ""));
+  const cornerName = normalizeCornerName(body.cornerName);
   const password = String(body.password ?? "");
   const email = String(body.email ?? "").trim().toLowerCase();
   const phone = normalizeMnPhone(String(body.phone ?? ""));
@@ -38,6 +41,7 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
   if (lastName.length < 2 || lastName.length > 40) return { error: "Овгоо оруулна уу." };
   if (firstName.length < 2 || firstName.length > 40) return { error: "Нэрээ оруулна уу." };
   if (!validUsername(username)) return { error: "Нэвтрэх нэр 3–32 тэмдэгт, жижиг үсэг, тоо, . _ - байна." };
+  if (!validCornerName(cornerName)) return { error: "Кино булангийн нэр 2–40 тэмдэгт, үсэг эсвэл тоогоор эхэлнэ." };
   if (password.length < 8 || password.length > 72) return { error: "Нууц үг хамгийн багадаа 8 тэмдэгт." };
   if (!phone) return { error: "Утасны дугаар 8 оронтой байна." };
   if (!emailPattern.test(email) || email.length > 120) return { error: "И-мэйл хаяг буруу байна." };
@@ -54,6 +58,7 @@ export function parseCreatorDraft(body: Record<string, unknown>): { value: Creat
       lastName,
       firstName,
       username,
+      cornerName,
       password,
       phone: `+976${phone}`,
       email,

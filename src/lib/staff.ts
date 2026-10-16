@@ -51,6 +51,8 @@ export function mapStaff(id: string, data: Record<string, unknown>): StaffAdmin 
     portfolio: String(data.portfolio ?? ""),
     experience: String(data.experience ?? ""),
     termsAcceptedAt: Number(data.termsAcceptedAt ?? 0),
+    cornerName: String(data.cornerName ?? ""),
+    cornerNameEdits: Number(data.cornerNameEdits ?? 0),
   };
 }
 

@@ -13,6 +13,7 @@ type FormState = {
   lastName: string;
   firstName: string;
   username: string;
+  cornerName: string;
   password: string;
   phone: string;
   email: string;
@@ -37,6 +38,7 @@ const emptyForm: FormState = {
   lastName: "",
   firstName: "",
   username: "",
+  cornerName: "",
   password: "",
   phone: "",
   email: "",
@@ -79,6 +81,7 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
     form.lastName.trim().length >= 2 &&
     form.firstName.trim().length >= 2 &&
     /^[a-z0-9._-]{3,32}$/i.test(form.username.trim()) &&
+    /^[\p{L}\p{N}][\p{L}\p{N} .'_-]{1,39}$/u.test(form.cornerName.trim().replace(/\s+/g, " ")) &&
     form.password.length >= 8 &&
     form.phone.replace(/\D/g, "").length >= 8 &&
     form.email.includes("@") &&
@@ -235,6 +238,10 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
               <Field label="Овог" required><input value={form.lastName} onChange={(e) => update("lastName", e.target.value)} placeholder="Овог" className="admin-input !h-11" /></Field>
               <Field label="Нэр" required><input value={form.firstName} onChange={(e) => update("firstName", e.target.value)} placeholder="Нэр" className="admin-input !h-11" /></Field>
               <Field label="Нэвтрэх нэр" required><input value={form.username} onChange={(e) => update("username", e.target.value.toLowerCase())} placeholder="creator_name" autoCapitalize="none" autoCorrect="off" className="admin-input !h-11" /></Field>
+              <div>
+                <Field label="Кино булангийн нэр" required><input value={form.cornerName} onChange={(e) => update("cornerName", e.target.value)} placeholder="Жишээ: Сувдаа кино" className="admin-input !h-11" /></Field>
+                <p className="mt-2 text-[11px] text-zinc-600">Хуваалцах хуудсан дээр энэ нэр гарна. Дараа нь 2 удаа солино.</p>
+              </div>
               <Field label="Нууц үг" required><input value={form.password} onChange={(e) => update("password", e.target.value)} type="password" placeholder="8-аас дээш тэмдэгт" autoComplete="new-password" className="admin-input !h-11" /></Field>
               <Field label="Утас" required><input value={form.phone} onChange={(e) => update("phone", e.target.value)} inputMode="tel" placeholder="+976 9911 2233" className="admin-input !h-11" /></Field>
               <Field label="Email" required><input value={form.email} onChange={(e) => update("email", e.target.value)} type="email" placeholder="name@example.com" className="admin-input !h-11" /></Field>

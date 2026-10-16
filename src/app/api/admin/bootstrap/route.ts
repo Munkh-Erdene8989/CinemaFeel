@@ -38,6 +38,9 @@ export async function GET(request: NextRequest) {
       session: {
         ...session,
         inviteCode: String(profile?.inviteCode ?? ""),
+        username: String(profile?.username ?? ""),
+        cornerName: String(profile?.cornerName ?? ""),
+        cornerNameEdits: Number(profile?.cornerNameEdits ?? 0),
         termsSeen: Number(profile?.creatorTermsSeenAt ?? 0) > 0,
         guideSeen: Number(profile?.creatorGuideSeenAt ?? 0) > 0,
       },
