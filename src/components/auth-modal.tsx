@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { GoogleAuthProvider, signInWithCustomToken, signInWithPopup } from "firebase/auth";
 import { Icon, Modal } from "./icons";
+import { StepMotion } from "./motion";
 import { clientAuth } from "@/lib/firebase";
 
 type Step = "start" | "otp" | "sms";
@@ -262,7 +263,7 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
 
   return (
     <Modal onClose={onClose} priority>
-      <div className="p-7 sm:p-9">
+      <StepMotion stepKey={step} className="p-7 sm:p-9">
         <div className="mb-7 grid h-12 w-12 place-items-center rounded-2xl bg-[#ff3d56]/15 text-[#ff536a]">
           <Icon name={icon} className="h-6 w-6" />
         </div>
@@ -354,7 +355,7 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
           </button>
         )}
         <p className="mt-7 text-center text-[10px] leading-5 text-zinc-600">Үргэлжлүүлснээр та үйлчилгээний нөхцөл болон нууцлалын бодлогыг зөвшөөрнө.</p>
-      </div>
+      </StepMotion>
     </Modal>
   );
 }

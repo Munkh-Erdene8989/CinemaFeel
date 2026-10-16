@@ -7,8 +7,10 @@ import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
+import { WatchSkeleton } from "./content-skeleton";
 import { EmailPromptModal } from "./email-prompt-modal";
 import { Icon } from "./icons";
+import { usePulse } from "./motion";
 import { useSite } from "./site-provider";
 
 function phoneOnlyAccount(email?: string | null, phone?: string | null) {
@@ -17,7 +19,7 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout } = useSite();
+  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout, ready } = useSite();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [url, setUrl] = useState("");
@@ -29,6 +31,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const [askEmail, setAskEmail] = useState(true);
   const [playbackKey, setPlaybackKey] = useState(0);
   const loadedFor = useRef("");
+  const loadingRef = useRef<HTMLParagraphElement>(null);
   const paywallRetry = useRef(false);
   const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
 
@@ -150,13 +153,17 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     }, { merge: true }).catch(() => undefined);
   };
 
+  usePulse(loading && !url && !youtube, loadingRef);
+
   const episodeIndex = episodes.findIndex((item) => item.id === current?.id);
   const previousEpisode = episodeIndex > 0 ? episodes[episodeIndex - 1] : null;
   const nextEpisode = episodeIndex >= 0 && episodeIndex < episodes.length - 1 ? episodes[episodeIndex + 1] : null;
 
-  if (!film && series.length > 0) {
+  if (!ready) return <WatchSkeleton />;
+
+  if (!film) {
     return (
-      <section className="mx-auto min-h-screen max-w-3xl px-5 pt-32">
+      <section data-rise className="mx-auto min-h-screen max-w-3xl px-5 pt-32">
         <h1 className="text-3xl font-black">Кино олдсонгүй</h1>
         <a href="/" className="mt-6 inline-block text-sm font-bold text-[#ff6679]">Нүүр лүү буцах</a>
       </section>
@@ -165,9 +172,9 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
 
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
-      {!youtube && <button onClick={() => film && openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film?.title || "Кино"}</button>}
+      {!youtube && <button data-rise onClick={() => openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film.title}</button>}
       <div className={youtube ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
-        <div className={youtube ? "w-full bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
+        <div data-rise data-delay="0.06" className={youtube ? "w-full bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
           {youtube ? (
             <CustomYouTubePlayer
               key={current?.id}
@@ -208,7 +215,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
                 {film?.image && !loading && <img src={film.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
                 <div className="relative">
-                  {loading ? "Ачааллаж байна..." : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !subscribed ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
+                  {loading ? <p ref={loadingRef}>Ачааллаж байна...</p> : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !subscribed ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
                   {needsAuth && (
                     <button onClick={openAuth} className="mt-4 flex h-11 items-center gap-2 rounded-full bg-white px-5 text-xs font-extrabold text-black">
                       <Icon name="play" className="h-4 w-4" fill />
@@ -229,13 +236,15 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
           )}
         </div>
         <div id="watch-episodes">
-          <p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff536a]">{film?.genre}</p>
-          <h1 className="mt-2 text-3xl font-black">{film?.title}</h1>
-          <p className="mt-3 text-sm leading-7 text-zinc-400">{film?.description}</p>
+          <div data-rise data-delay="0.12">
+            <p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff536a]">{film?.genre}</p>
+            <h1 className="mt-2 text-3xl font-black">{film?.title}</h1>
+            <p className="mt-3 text-sm leading-7 text-zinc-400">{film?.description}</p>
+          </div>
           <h2 className="mt-8 text-sm font-black uppercase tracking-[.16em] text-zinc-500">Ангиуд</h2>
           <div className="mt-4 space-y-2">
-            {episodes.map((episode) => (
-              <button key={episode.id} onClick={() => router.push(`/watch/${seriesId}/${episode.number}`)} className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left ${episode.id === current?.id ? "border-[#ff536a] bg-[#ff3d56]/10" : "border-white/10"}`}>
+            {episodes.map((episode, index) => (
+              <button key={episode.id} data-rise data-delay={String((index % 6) * 0.04)} onClick={() => router.push(`/watch/${seriesId}/${episode.number}`)} className={`flex w-full items-center gap-3 rounded-2xl border px-4 py-3 text-left ${episode.id === current?.id ? "border-[#ff536a] bg-[#ff3d56]/10" : "border-white/10"}`}>
                 <span className="grid h-9 w-9 place-items-center rounded-full bg-white text-black"><Icon name="play" className="h-3.5 w-3.5" fill /></span>
                 <span>
                   <b className="block text-sm">{episode.number}-р анги</b>

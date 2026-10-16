@@ -2,6 +2,7 @@
 
 import { useEffect, type ReactNode } from "react";
 import { Logo } from "./icons";
+import { useOverlayMotion } from "./motion";
 
 const fee = "10,000₮";
 
@@ -21,6 +22,8 @@ function Clause({ index, children }: { index: string; children: ReactNode }) {
 }
 
 export function CreatorTermsModal({ busy, error, onAccept }: { busy: boolean; error: string; onAccept: () => void }) {
+  const { backdropRef, panelRef } = useOverlayMotion();
+
   useEffect(() => {
     const previous = document.body.style.overflow;
     document.body.style.overflow = "hidden";
@@ -30,8 +33,10 @@ export function CreatorTermsModal({ busy, error, onAccept }: { busy: boolean; er
   }, []);
 
   return (
-    <div className="fixed inset-0 z-[100] grid place-items-center bg-black/80 p-3 backdrop-blur-md sm:p-6" role="dialog" aria-modal="true" aria-labelledby="creator-terms-title">
-      <div className="flex max-h-[min(92vh,920px)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#121216] shadow-2xl">
+    <>
+    <div ref={backdropRef} className="fixed inset-0 z-[100] bg-black/80 backdrop-blur-md" />
+    <div className="fixed inset-0 z-[100] grid place-items-center p-3 sm:p-6" role="dialog" aria-modal="true" aria-labelledby="creator-terms-title">
+      <div ref={panelRef} className="flex max-h-[min(92vh,920px)] w-full max-w-3xl flex-col overflow-hidden rounded-[28px] border border-white/10 bg-[#121216] shadow-2xl">
         <div className="shrink-0 border-b border-white/[.07] px-6 py-5 sm:px-8">
           <Logo onClick={() => undefined} />
           <p className="mt-5 text-[11px] font-bold uppercase tracking-[0.22em] text-[#ff536a]">CinemaFeel</p>
@@ -120,5 +125,6 @@ export function CreatorTermsModal({ busy, error, onAccept }: { busy: boolean; er
         </div>
       </div>
     </div>
+    </>
   );
 }

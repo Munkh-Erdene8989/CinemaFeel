@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState, type RefObject } from "react";
+import { useOverlayMotion } from "./motion";
 
 const paths: Record<string, string> = {
   play: "m9 6 9 6-9 6V6Z",
@@ -56,15 +57,20 @@ export function Logo({ onClick, href = "/" }: { onClick?: () => void; href?: str
 
 export function Modal({ children, onClose, wide = false, priority = false, size }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "xl" }) {
   const width = size === "xl" ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md";
+  const { backdropRef, panelRef, requestClose } = useOverlayMotion(onClose);
+  const layer = priority ? "z-[80]" : "z-[70]";
   return (
-    <div className={`fixed inset-0 ${priority ? "z-[80]" : "z-[70]"} grid place-items-center overflow-y-auto bg-black/85 p-4 backdrop-blur-md`} role="dialog" aria-modal="true">
-      <div className={`relative my-6 w-full ${width} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
-        <button onClick={onClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/30 text-zinc-300 backdrop-blur-md hover:bg-white/10" aria-label="Хаах">
-          <Icon name="close" />
-        </button>
-        {children}
+    <>
+      <div ref={backdropRef} className={`fixed inset-0 ${layer} bg-black/85 backdrop-blur-md`} />
+      <div className={`fixed inset-0 ${layer} grid place-items-center overflow-y-auto p-4`} role="dialog" aria-modal="true">
+        <div ref={panelRef} className={`relative my-6 w-full ${width} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
+          <button onClick={requestClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/30 text-zinc-300 backdrop-blur-md hover:bg-white/10" aria-label="Хаах">
+            <Icon name="close" />
+          </button>
+          {children}
+        </div>
       </div>
-    </div>
+    </>
   );
 }
 

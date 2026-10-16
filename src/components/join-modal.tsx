@@ -5,6 +5,7 @@ import type { QPayUrl } from "@/lib/types";
 import { CREATOR_FEE, creatorContentTypes } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon } from "./icons";
+import { StepMotion, useOverlayMotion } from "./motion";
 
 type Step = "choose" | "benefits" | "form" | "pay" | "done";
 
@@ -132,13 +133,17 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
   };
 
   const wide = step === "benefits" || step === "form" || step === "choose";
+  const { backdropRef, panelRef, requestClose } = useOverlayMotion(onClose);
 
   return (
-    <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto bg-black/80 p-4 backdrop-blur-md" role="dialog" aria-modal="true" aria-labelledby="join-title">
-      <div className={`relative my-6 w-full ${wide ? "max-w-3xl" : "max-w-md"} rounded-[28px] border border-white/10 bg-[#16161b] p-6 shadow-2xl sm:p-8`}>
-        <button onClick={onClose} className="absolute right-4 top-4 grid h-9 w-9 place-items-center rounded-full bg-white/5 text-zinc-300 hover:bg-white/10" aria-label="Хаах">
+    <>
+    <div ref={backdropRef} className="fixed inset-0 z-[80] bg-black/80 backdrop-blur-md" />
+    <div className="fixed inset-0 z-[80] grid place-items-center overflow-y-auto p-4" role="dialog" aria-modal="true" aria-labelledby="join-title">
+      <div ref={panelRef} className={`relative my-6 w-full ${wide ? "max-w-3xl" : "max-w-md"} rounded-[28px] border border-white/10 bg-[#16161b] p-6 shadow-2xl sm:p-8`}>
+        <button onClick={requestClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-white/5 text-zinc-300 hover:bg-white/10" aria-label="Хаах">
           <Icon name="close" className="h-4 w-4" />
         </button>
+        <StepMotion stepKey={step}>
 
         {step === "choose" && (
           <div>
@@ -309,7 +314,9 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
             </a>
           </div>
         )}
+        </StepMotion>
       </div>
     </div>
+    </>
   );
 }

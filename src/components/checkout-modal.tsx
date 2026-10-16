@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { WEEKLY_PRICE, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon, Modal } from "./icons";
+import { StepMotion } from "./motion";
 import { clientAuth } from "@/lib/firebase";
 
 export function CheckoutModal({
@@ -118,7 +119,7 @@ export function CheckoutModal({
 
   return (
     <Modal onClose={onClose}>
-      <div className="p-7 sm:p-9">
+      <StepMotion stepKey={invoice ? `pay-${mode}` : mode} className="p-7 sm:p-9">
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ff536a]">Төлбөр баталгаажуулах</p>
         <h2 className="mt-2 text-2xl font-black">{title}</h2>
         {mode !== "single" && onModeChange && !invoice && (
@@ -218,7 +219,7 @@ export function CheckoutModal({
           <Icon name="lock" className="h-3 w-3" />
           Төлбөр QPay-ээр баталгаажна
         </div>
-      </div>
+      </StepMotion>
     </Modal>
   );
 }

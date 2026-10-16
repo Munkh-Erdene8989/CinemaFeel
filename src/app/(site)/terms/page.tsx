@@ -10,7 +10,7 @@ const supportEmail = "raito.e9@gmail.com";
 
 function Section({ id, title, children }: { id: string; title: string; children: ReactNode }) {
   return (
-    <section id={id} className="scroll-mt-28 border-t border-white/[.07] pt-8">
+    <section id={id} data-rise className="scroll-mt-28 border-t border-white/[.07] pt-8">
       <h2 className="text-lg font-black tracking-tight text-white">{title}</h2>
       <div className="mt-4 space-y-4 text-sm leading-7 text-zinc-400">{children}</div>
     </section>
@@ -41,11 +41,13 @@ function Items({ items }: { items: string[] }) {
 export default function TermsPage() {
   return (
     <article className="mx-auto max-w-3xl px-5 pb-20 pt-28 md:px-10 md:pb-16">
+      <div data-rise>
       <p className="text-[11px] font-bold uppercase tracking-[0.22em] text-[#ff536a]">CinemaFeel</p>
       <h1 className="mt-3 text-3xl font-black tracking-tight sm:text-4xl">Үйлчилгээний нөхцөл</h1>
       <p className="mt-3 text-xs font-bold tracking-wide text-zinc-500">Сүүлд шинэчилсэн: 2026 оны 10 дугаар сарын 15</p>
+      </div>
 
-      <div className="mt-8 space-y-4 text-sm leading-7 text-zinc-400">
+      <div data-rise data-delay="0.08" className="mt-8 space-y-4 text-sm leading-7 text-zinc-400">
         <p>
           Энэхүү Үйлчилгээний нөхцөл нь CinemaFeel платформ, <strong className="font-semibold text-zinc-200">cinemafeel.dev</strong> вебсайт болон CinemaFeel нэрийн дор санал болгож буй холбогдох цахим үйлчилгээ (“<strong className="font-semibold text-zinc-200">CinemaFeel</strong>”, “<strong className="font-semibold text-zinc-200">Платформ</strong>”, “<strong className="font-semibold text-zinc-200">Үйлчилгээ</strong>” гэх)-г ашиглахтай холбоотой харилцааг зохицуулна.
         </p>

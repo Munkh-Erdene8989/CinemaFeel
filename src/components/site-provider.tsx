@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
@@ -12,7 +12,9 @@ import { AuthModal } from "./auth-modal";
 import { JoinModal } from "./join-modal";
 import { CheckoutModal } from "./checkout-modal";
 import { FilmModal } from "./film-modal";
+import { animate } from "animejs";
 import { Icon, Logo } from "./icons";
+import { PageMotion, prefersReducedMotion, useChromeMotion } from "./motion";
 
 type Pending = CheckoutMode | "watch" | null;
 
@@ -79,6 +81,9 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const [checkout, setCheckout] = useState<CheckoutMode | null>(null);
   const [pending, setPending] = useState<Pending>(null);
   const [toast, setToast] = useState("");
+  const rootRef = useRef<HTMLElement>(null);
+  const toastRef = useRef<HTMLDivElement>(null);
+  useChromeMotion(rootRef);
 
   const subscribed = subscriptionActive(profile);
   const monthlyPrice = Number(settings.price || 14900);
@@ -87,6 +92,15 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     setToast(message);
     window.setTimeout(() => setToast(""), 3500);
   };
+
+  useEffect(() => {
+    const el = toastRef.current;
+    if (!toast || !el || prefersReducedMotion()) return;
+    const anim = animate(el, { opacity: [0, 1], y: [16, 0], scale: [0.94, 1], duration: 420, ease: "outBack" });
+    return () => {
+      anim.cancel();
+    };
+  }, [toast]);
 
   useEffect(() => {
     if (!firebaseConfigured()) {
@@ -190,8 +204,9 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
 
   if (settings.maintenance) {
     return (
-      <main className="grid min-h-screen place-items-center bg-[#08080a] px-6 text-center text-white">
-        <div>
+      <main ref={rootRef} data-site-root className="grid min-h-screen place-items-center bg-[#08080a] px-6 text-center text-white">
+        <PageMotion />
+        <div data-rise>
           <Logo href="/admin/login" />
           <h1 className="mt-8 text-3xl font-black">Засварын горим</h1>
           <p className="mt-3 text-sm text-zinc-500">CinemaFeel түр хугацаанд хаалттай байна.</p>
@@ -204,26 +219,29 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SiteContext.Provider value={value}>
-      <main className="min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0">
-        <header className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
+      <main ref={rootRef} data-site-root className="min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0">
+        <PageMotion />
+        <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-8 px-5 md:px-10 lg:px-16">
-            <Logo href="/" />
+            <span data-chrome="logo">
+              <Logo href="/" />
+            </span>
             <nav className="ml-6 hidden items-center gap-7 text-sm font-semibold lg:flex">
-              <a href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
-              <a href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
+              <a data-chrome="link" href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
+              <a data-chrome="link" href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
             </nav>
             <div className="ml-auto flex items-center gap-2">
-              <button onClick={() => setJoinOpen(true)} className="flex h-10 shrink-0 items-center rounded-full bg-[#ff3d56] px-3 text-[11px] font-bold text-white sm:px-4 sm:text-xs">
+              <button data-chrome="action" onClick={() => setJoinOpen(true)} className="flex h-10 shrink-0 items-center rounded-full bg-[#ff3d56] px-3 text-[11px] font-bold text-white sm:px-4 sm:text-xs">
                 <span className="sm:hidden">Нэгдэх</span>
                 <span className="hidden sm:inline">Бидэнтэй нэгдээрэй</span>
               </button>
               {user ? (
                 <>
-                  <a href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
-                  <button onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white sm:block">Гарах</button>
+                  <a data-chrome="action" href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
+                  <button data-chrome="action" onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white sm:block">Гарах</button>
                 </>
               ) : (
-                <button onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold sm:px-4">
+                <button data-chrome="action" onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold sm:px-4">
                   <Icon name="user" className="h-4 w-4" />
                   <span className="hidden sm:inline">Нэвтрэх</span>
                 </button>
@@ -231,8 +249,8 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </header>
-        {children}
-        <footer className="mx-auto max-w-[1440px] border-t border-white/[.07] px-5 py-10 text-xs text-zinc-600 md:px-10 lg:px-16">
+        <div data-page>{children}</div>
+        <footer data-rise className="mx-auto max-w-[1440px] border-t border-white/[.07] px-5 py-10 text-xs text-zinc-600 md:px-10 lg:px-16">
           <div className="flex flex-col justify-between gap-3 sm:flex-row">
             <p>© {new Date().getFullYear()} CinemaFeel. Богино түүх, том мэдрэмж.</p>
             <div className="flex gap-5">
@@ -241,7 +259,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </footer>
-        <nav className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
+        <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
           {[
             ["/", "home", "Нүүр"],
             ["/library", "film", "Сан"],
@@ -301,9 +319,11 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
           />
         )}
         {toast && (
-          <div className="fixed bottom-24 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 whitespace-nowrap rounded-full bg-white px-5 py-3 text-xs font-extrabold text-black shadow-2xl md:bottom-8">
-            <Icon name="check" className="h-4 w-4 text-emerald-600" />
-            {toast}
+          <div className="fixed bottom-24 left-1/2 z-[90] -translate-x-1/2 md:bottom-8">
+            <div ref={toastRef} className="flex items-center gap-2 whitespace-nowrap rounded-full bg-white px-5 py-3 text-xs font-extrabold text-black shadow-2xl">
+              <Icon name="check" className="h-4 w-4 text-emerald-600" />
+              {toast}
+            </div>
           </div>
         )}
       </main>
