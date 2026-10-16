@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
-import { announceIfReady } from "@/lib/announce";
-import { announcePendingEpisodes } from "@/lib/episode-announce";
+import { publishNotice } from "@/lib/publish-notice";
+import { seriesStatus } from "@/lib/series-doc";
 import { deleteEpisodeMedia, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
@@ -19,11 +19,9 @@ export async function PATCH(request: NextRequest, context: Context) {
   const current = loaded.snap;
 
   if (typeof body.status === "string" && Object.keys(body).length === 1) {
-    await ref.set({ status: body.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог" }, { merge: true });
-    const origin = siteOrigin(request);
-    const announcement = await announceIfReady(id, origin);
-    const telegram = body.status === "Нийтлэгдсэн" ? await announcePendingEpisodes(id, origin) : {};
-    return NextResponse.json({ ok: true, ...announcement, ...telegram });
+    await ref.set({ status: seriesStatus(body.status) }, { merge: true });
+    const notice = await publishNotice(id, siteOrigin(request), body.status);
+    return NextResponse.json({ ok: true, ...notice });
   }
 
   const payload = seriesPayload({ ...current.data(), ...body }, Number(current.data()?.createdAt ?? Date.now()));
@@ -41,10 +39,8 @@ export async function PATCH(request: NextRequest, context: Context) {
   let shareCode = String(current.data()?.shareCode ?? "");
   if (!shareCode) shareCode = await uniqueShareCode();
   await ref.set({ ...payload, shareCode }, { merge: true });
-  const origin = siteOrigin(request);
-  const announcement = await announceIfReady(id, origin);
-  const telegram = payload.status === "Нийтлэгдсэн" ? await announcePendingEpisodes(id, origin) : {};
-  return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode, ...announcement, ...telegram });
+  const notice = await publishNotice(id, siteOrigin(request), payload.status);
+  return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode, ...notice });
 }
 
 export async function DELETE(request: NextRequest, context: Context) {

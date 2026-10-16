@@ -2,9 +2,10 @@
 
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
-import { CREATOR_FEE, defaultSettings, SUPER_ADMIN_ID } from "@/lib/types";
+import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
+import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
-import { buildRevenue, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
+import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
 import { KnowledgeAdmin } from "./knowledge-admin";
@@ -195,14 +196,8 @@ export function AdminApp() {
 
   const superRevenue = useMemo(() => {
     if (session?.role !== "super") return null;
-    const names = new Map<string, string>([[SUPER_ADMIN_ID, "Super admin"]]);
-    const invitedBy = new Map<string, string>();
-    for (const admin of staff) {
-      names.set(admin.id, admin.name || admin.username);
-      if (admin.invitedById) invitedBy.set(admin.id, admin.invitedById);
-    }
     const { since } = revenueWindow(revenueDays);
-    return buildRevenue(content, payments.filter((payment) => payment.createdAt >= since), names, invitedBy);
+    return revenueForWindow(content, payments, staff, since);
   }, [session?.role, staff, content, payments, revenueDays]);
   const revenue = session?.role === "super" ? superRevenue : creatorRevenue;
 
@@ -310,7 +305,10 @@ export function AdminApp() {
           {section === "Хөнгөлөлт" && superAdmin && <DiscountsAdmin notify={notify} />}
           {section === "Төлбөр" && superAdmin && <PaymentsAdmin payments={payments} notify={notify} onRefunded={(payment) => {
             setPayments((current) => current.map((item) => item.id === payment.id ? { ...item, status: "Буцаагдсан" } : item));
-            if (payment.mode === "subscription" || payment.mode === "weekly") setUsers((current) => current.map((user) => user.uid === payment.uid ? { ...user, plan: "Үндсэн", subscriptionExpiresAt: Date.now() } : user));
+            if (isSubscriptionCheckout(payment.mode)) {
+              const revoked = revokePass();
+              setUsers((current) => current.map((user) => user.uid === payment.uid ? { ...user, ...revoked } : user));
+            }
             if (payment.mode === "creator" && payment.creatorId) setStaff((current) => current.map((admin) => admin.id === payment.creatorId ? { ...admin, active: false, paid: false } : admin));
           }} />}
           {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} notify={notify} />}

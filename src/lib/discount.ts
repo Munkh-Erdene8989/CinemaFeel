@@ -1,5 +1,6 @@
+import { checkoutListAmount, viewerCheckoutMode } from "./entitlement";
 import { adminDb } from "./firebase-admin";
-import { WEEKLY_PRICE, type CheckoutMode, type Discount } from "./types";
+import type { CheckoutMode, Discount } from "./types";
 
 export function normalizeDiscountCode(value: string) {
   return value.trim().toUpperCase().replace(/[^A-Z0-9]/g, "");
@@ -56,19 +57,16 @@ export async function viewerCheckoutQuote(input: QuoteInput): Promise<
     }
   | { ok: false; error: string; status: number }
 > {
-  let originalAmount = input.monthlyPrice;
-  let product = "CinemaFeel Plus";
+  const mode = viewerCheckoutMode(input.mode);
+  let originalAmount = checkoutListAmount(mode, { monthlyPrice: input.monthlyPrice });
+  let product = mode === "weekly" ? "CinemaFeel 7 хоног" : "CinemaFeel Plus";
   let seriesId: string | null = null;
-  const mode: CheckoutMode = input.mode === "single" ? "single" : input.mode === "weekly" ? "weekly" : "subscription";
 
-  if (mode === "weekly") {
-    originalAmount = WEEKLY_PRICE;
-    product = "CinemaFeel 7 хоног";
-  } else if (mode === "single") {
+  if (mode === "single") {
     if (!input.seriesId) return { ok: false, error: "Кино сонгоно уу.", status: 400 };
     const series = await adminDb().collection("series").doc(input.seriesId).get();
     if (!series.exists || series.data()?.status !== "Нийтлэгдсэн") return { ok: false, error: "Кино олдсонгүй.", status: 404 };
-    originalAmount = Number(series.data()?.price ?? 0);
+    originalAmount = checkoutListAmount("single", { monthlyPrice: input.monthlyPrice, singlePrice: Number(series.data()?.price ?? 0) });
     if (originalAmount <= 0) return { ok: false, error: "Энэ кино үнэгүй.", status: 400 };
     product = String(series.data()?.title ?? "Кино");
     seriesId = input.seriesId;

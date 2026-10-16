@@ -1,3 +1,4 @@
+import { isSubscriptionCheckout } from "./entitlement";
 import { SUPER_ADMIN_ID, type AdminRevenue, type Payment, type ReferralEarning, type RevenueReport, type RevenueRow, type Series } from "./types";
 
 export const revenueWindows = [15, 30, 90] as const;
@@ -48,7 +49,7 @@ export function buildRevenue(series: Series[], payments: Payment[], names: Map<s
   let subscriptionGross = 0;
   for (const payment of payments) {
     if (payment.status !== "Амжилттай") continue;
-    if (payment.mode === "subscription" || payment.mode === "weekly") subscriptionGross += Number(payment.amount) || 0;
+    if (isSubscriptionCheckout(payment.mode)) subscriptionGross += Number(payment.amount) || 0;
     else if (payment.seriesId) grossBySeries.set(payment.seriesId, (grossBySeries.get(payment.seriesId) ?? 0) + (Number(payment.amount) || 0));
   }
 
@@ -140,5 +141,44 @@ export function buildRevenue(series: Series[], payments: Payment[], names: Map<s
     unallocated: totalUniqueViews > 0 ? 0 : subscriptionPool,
     rows: rows.sort((a, b) => b.total - a.total || b.uniqueViews - a.uniqueViews),
     admins: [...byAdmin.values()].sort((a, b) => b.total - a.total || b.uniqueViews - a.uniqueViews),
+  };
+}
+
+export type RevenueParty = { id: string; name?: string; username?: string; invitedById?: string };
+
+export function revenueParties(staff: RevenueParty[]) {
+  const names = new Map<string, string>([[SUPER_ADMIN_ID, "Super admin"]]);
+  const invitedBy = new Map<string, string>();
+  for (const admin of staff) {
+    names.set(admin.id, String(admin.name || admin.username || admin.id));
+    const invitedById = String(admin.invitedById ?? "");
+    if (invitedById) invitedBy.set(admin.id, invitedById);
+  }
+  return { names, invitedBy };
+}
+
+export function revenueForWindow(series: Series[], payments: Payment[], staff: RevenueParty[], since: number) {
+  const { names, invitedBy } = revenueParties(staff);
+  return buildRevenue(
+    series,
+    payments.filter((payment) => payment.createdAt >= since),
+    names,
+    invitedBy,
+  );
+}
+
+export function scopedRevenue(report: RevenueReport, viewer: { role: string; adminId: string; name: string }): RevenueReport {
+  if (viewer.role === "super") return report;
+  const mine = report.admins.find((item) => item.adminId === viewer.adminId) ?? emptyAdmin(viewer.adminId, viewer.name);
+  return {
+    subscriptionGross: 0,
+    subscriptionPool: report.subscriptionPool,
+    platformSubscription: 0,
+    platformDirect: 0,
+    referralPaid: mine.referral,
+    totalUniqueViews: report.totalUniqueViews,
+    unallocated: 0,
+    rows: report.rows.filter((row) => row.ownerId === viewer.adminId),
+    admins: [mine],
   };
 }

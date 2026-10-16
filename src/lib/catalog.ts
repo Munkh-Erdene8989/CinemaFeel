@@ -1,7 +1,8 @@
 import { randomBytes, randomUUID } from "crypto";
 import type { DocumentData, DocumentReference } from "firebase-admin/firestore";
 import { adminBucket, adminDb } from "./firebase-admin";
-import type { AdminSession, Episode, Series, SeriesWithEpisodes } from "./types";
+import { seriesFromRecord, seriesWritePayload } from "./series-doc";
+import type { AdminSession, Episode, SeriesWithEpisodes } from "./types";
 
 const shareAlphabet = "abcdefghjkmnpqrstuvwxyz23456789";
 
@@ -26,48 +27,12 @@ export async function uniqueShareCode(reserved = new Set<string>()) {
   return randomShareCode(6);
 }
 
-export function mapSeries(id: string, data: DocumentData): Series {
-  return {
-    id,
-    title: String(data.title ?? ""),
-    genre: String(data.genre ?? "Драма"),
-    description: String(data.description ?? ""),
-    episodes: Number(data.episodes ?? 0),
-    price: Number(data.price ?? 0),
-    access: Number(data.price ?? 0) === 0 || data.access === "free" ? "free" : "paid",
-    image: String(data.image ?? ""),
-    cover: String(data.cover ?? ""),
-    shareCode: String(data.shareCode ?? ""),
-    views: Number(data.views ?? 0),
-    uniqueViews: Number(data.uniqueViews ?? 0),
-    ownerId: String(data.ownerId ?? ""),
-    ownerName: String(data.ownerName ?? ""),
-    status: data.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог",
-    featured: Boolean(data.featured),
-    year: Number(data.year ?? new Date().getFullYear()),
-    age: String(data.age ?? "13+"),
-    createdAt: Number(data.createdAt ?? Date.now()),
-  };
+export function mapSeries(id: string, data: DocumentData) {
+  return seriesFromRecord(id, data);
 }
 
 export function seriesPayload(body: Record<string, unknown>, createdAt = Date.now()) {
-  const price = Number(body.price ?? 0);
-  return {
-    title: String(body.title ?? "").trim(),
-    genre: String(body.genre ?? "Драма"),
-    description: String(body.description ?? ""),
-    episodes: Math.max(1, Number(body.episodes ?? 1)),
-    price,
-    access: price === 0 ? "free" : "paid",
-    image: String(body.image ?? ""),
-    cover: String(body.cover ?? ""),
-    views: Number(body.views ?? 0),
-    status: body.status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог",
-    featured: Boolean(body.featured),
-    year: Number(body.year ?? new Date().getFullYear()),
-    age: String(body.age ?? "13+"),
-    createdAt,
-  };
+  return seriesWritePayload(body, createdAt);
 }
 
 export async function listSeries(): Promise<SeriesWithEpisodes[]> {

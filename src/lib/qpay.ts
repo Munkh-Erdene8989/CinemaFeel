@@ -114,13 +114,6 @@ export function paymentResult(check: QPayCheck, amount: number) {
   return { paid, paymentId: row?.payment_id || "" };
 }
 
-export function paidRow(check: QPayCheck) {
-  return (check.rows ?? []).find((row) => {
-    const status = (row.payment_status ?? "").toUpperCase();
-    return status === "PAID" || status === "SUCCESS" || Number(row.payment_amount ?? 0) > 0;
-  });
-}
-
 export async function refundPayment(paymentId: string) {
   return qpayRequest<unknown>("DELETE", `/v2/payment/refund/${paymentId}`);
 }

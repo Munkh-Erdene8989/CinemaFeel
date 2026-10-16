@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
+import { retrySubscribedPaywall } from "@/lib/playback";
 import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
@@ -102,7 +103,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       }
       if (data.code === "paywall") {
         setNeedsPay(true);
-        if (subscribed && !paywallRetry.current) {
+        if (retrySubscribedPaywall(data.code, subscribed, paywallRetry.current)) {
           paywallRetry.current = true;
           loadedFor.current = "";
           setPlaybackKey((value) => value + 1);

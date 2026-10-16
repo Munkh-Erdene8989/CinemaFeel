@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useRef, useState } from 
 import { usePathname, useRouter } from "next/navigation";
 import { onAuthStateChanged, signOut, type User } from "firebase/auth";
 import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
+import { seriesFromRecord } from "@/lib/series-doc";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
 import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
@@ -39,30 +40,6 @@ export function useSite() {
   const value = useContext(SiteContext);
   if (!value) throw new Error("useSite must be used inside SiteProvider");
   return value;
-}
-
-function asSeries(id: string, data: Record<string, unknown>): Series {
-  return {
-    id,
-    title: String(data.title ?? ""),
-    genre: String(data.genre ?? ""),
-    description: String(data.description ?? ""),
-    episodes: Number(data.episodes ?? 0),
-    price: Number(data.price ?? 0),
-    access: data.access === "free" ? "free" : "paid",
-    image: String(data.image ?? ""),
-    cover: String(data.cover ?? ""),
-    shareCode: String(data.shareCode ?? ""),
-    views: Number(data.views ?? 0),
-    uniqueViews: Number(data.uniqueViews ?? 0),
-    ownerId: String(data.ownerId ?? ""),
-    ownerName: String(data.ownerName ?? ""),
-    status: data.status === "Ноорог" ? "Ноорог" : "Нийтлэгдсэн",
-    featured: Boolean(data.featured),
-    year: Number(data.year ?? new Date().getFullYear()),
-    age: String(data.age ?? "13+"),
-    createdAt: Number(data.createdAt ?? 0),
-  };
 }
 
 export function SiteProvider({ children }: { children: React.ReactNode }) {
@@ -129,7 +106,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       }
     });
     const stopSeries = onSnapshot(query(collection(db, "series"), where("status", "==", "Нийтлэгдсэн")), (snap) => {
-      setSeries(snap.docs.map((item) => asSeries(item.id, item.data())).sort((a, b) => b.createdAt - a.createdAt));
+      setSeries(snap.docs.map((item) => seriesFromRecord(item.id, item.data())).sort((a, b) => b.createdAt - a.createdAt));
       setReady(true);
     });
     const stopSettings = onSnapshot(doc(db, "settings", "app"), (snap) => {

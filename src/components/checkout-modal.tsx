@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { WEEKLY_PRICE, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
+import { checkoutListAmount, SUBSCRIPTION_DAYS } from "@/lib/entitlement";
+import { WEEKLY_DAYS, WEEKLY_PRICE, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon, Modal } from "./icons";
 import { StepMotion } from "./motion";
@@ -28,10 +29,10 @@ export function CheckoutModal({
   const [applied, setApplied] = useState<{ code: string; percent: number; originalAmount: number; amount: number } | null>(null);
   const [invoice, setInvoice] = useState<{ senderInvoiceNo: string; qrImage: string; urls: QPayUrl[] } | null>(null);
   const weekly = mode === "weekly";
-  const listPrice = mode === "single" ? film?.price ?? 0 : weekly ? WEEKLY_PRICE : monthlyPrice;
+  const listPrice = checkoutListAmount(mode, { monthlyPrice, singlePrice: film?.price ?? 0 });
   const total = applied?.amount ?? listPrice;
   const title = mode === "single" ? film?.title : weekly ? "CinemaFeel 7 хоногийн эрх" : "CinemaFeel сарын эрх";
-  const label = mode === "single" ? "Киноны эрх" : weekly ? "7 хоногийн эрх" : "30 хоногийн эрх";
+  const label = mode === "single" ? "Киноны эрх" : weekly ? `${WEEKLY_DAYS} хоногийн эрх` : `${SUBSCRIPTION_DAYS} хоногийн эрх`;
 
   useEffect(() => {
     setInvoice(null);

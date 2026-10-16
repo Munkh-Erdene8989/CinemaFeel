@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { announceIfReady } from "@/lib/announce";
+import { publishNotice } from "@/lib/publish-notice";
 import { listSeries, newId, seriesPayload, uniqueShareCode } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres } from "@/lib/genres";
@@ -32,6 +32,6 @@ export async function POST(request: NextRequest) {
     uniqueViews: 0,
     releaseEmail: "pending",
   });
-  const announcement = await announceIfReady(id, siteOrigin(request));
-  return NextResponse.json({ id, shareCode, ...announcement });
+  const notice = await publishNotice(id, siteOrigin(request), payload.status);
+  return NextResponse.json({ id, shareCode, ...notice });
 }

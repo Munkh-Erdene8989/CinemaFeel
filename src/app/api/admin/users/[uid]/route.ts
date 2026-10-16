@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { clearPass, extendPass } from "@/lib/entitlement";
 import { adminDb } from "@/lib/firebase-admin";
 import { jsonError, requireSuper } from "@/lib/http";
 
@@ -13,9 +14,9 @@ export async function PATCH(request: NextRequest, context: { params: Promise<{ u
   if (body.plan === "Plus") {
     const current = await adminDb().collection("users").doc(uid).get();
     const expires = Number(current.data()?.subscriptionExpiresAt ?? 0);
-    if (expires < Date.now()) patch.subscriptionExpiresAt = Date.now() + 30 * 24 * 60 * 60 * 1000;
+    Object.assign(patch, extendPass(expires));
   }
-  if (body.plan === "Үндсэн") patch.subscriptionExpiresAt = 0;
+  if (body.plan === "Үндсэн") Object.assign(patch, clearPass());
   if (!Object.keys(patch).length) return jsonError("Өөрчлөх мэдээлэл алга.");
   await adminDb().collection("users").doc(uid).set(patch, { merge: true });
   return NextResponse.json({ ok: true, ...patch });
