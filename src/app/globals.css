@@ -52,6 +52,21 @@ button {
   border-color: #ff536a;
 }
 
+/* Windows and macOS paint the native select popup white, while
+   color-scheme: dark forces its text to white. Keep the closed
+   control light-on-dark, and the open list dark-on-white. */
+select {
+  color-scheme: only light;
+  color: #fff;
+}
+
+select option,
+select optgroup {
+  color-scheme: only light;
+  background-color: #fff;
+  color: #111114;
+}
+
 @keyframes offer-glow {
   0%,
   100% {
