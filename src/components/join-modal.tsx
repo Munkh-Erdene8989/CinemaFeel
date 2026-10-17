@@ -32,6 +32,7 @@ type Invoice = {
   urls: QPayUrl[];
   amount: number;
   username: string;
+  welcomeSent?: boolean;
 };
 
 const emptyForm: FormState = {
@@ -97,7 +98,7 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(form),
     });
-    const data = (await response.json()) as Invoice & { error?: string };
+    const data = (await response.json()) as Invoice & { error?: string; welcomeSent?: boolean };
     setLoading(false);
     if (!response.ok || !data.senderInvoiceNo) {
       setError(data.error || "Бүртгэл үүсгэж чадсангүй.");
@@ -109,6 +110,7 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
       urls: data.urls || [],
       amount: data.amount || CREATOR_FEE,
       username: data.username || form.username.trim().toLowerCase(),
+      welcomeSent: data.welcomeSent === true,
     });
     setStep("pay");
   };
@@ -316,6 +318,7 @@ export function JoinModal({ onClose }: { onClose: () => void }) {
               {formatMoney(CREATOR_FEE)} бүртгэлийн хураамж төлөгдсөн. Админ хуудас ашиглахад бэлэн.
             </p>
             {invoice?.username && <p className="mt-4 text-xs text-zinc-500">Нэвтрэх нэр: <span className="font-bold text-white">{invoice.username}</span></p>}
+            {invoice?.welcomeSent && <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-zinc-500">Нэвтрэх нэр, нууц үг болон дашбоардын линкийг имэйлээр илгээлээ.</p>}
             <a href="/admin" className="mt-6 flex h-12 items-center justify-center rounded-xl bg-white text-sm font-extrabold text-black">
               Админ хуудас руу орох
             </a>

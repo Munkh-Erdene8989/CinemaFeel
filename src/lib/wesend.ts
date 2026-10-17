@@ -126,6 +126,26 @@ export async function sendReleaseEmails(recipients: string[], mail: ReleaseMail,
   }));
 }
 
+export async function sendWesendEmails(
+  recipients: string[],
+  message: { subject: string; html: string; text: string },
+  idempotencyPrefix: string,
+) {
+  const tag = idempotencyPrefix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "mail";
+  for (let index = 0; index < recipients.length; index += BULK_LIMIT) {
+    const chunk = recipients.slice(index, index + BULK_LIMIT);
+    const sent = await postBulk("/email/bulk", {
+      to: chunk,
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+      from_name: "CinemaFeel",
+    }, `${tag}/${index}`);
+    if (!sent.ok) return sent;
+  }
+  return { ok: true as const };
+}
+
 export async function sendReleaseSms(recipients: string[], title: string, link: string, seriesId: string) {
   return sendChunks("/sms/bulk", recipients, seriesId, "sms", (to) => ({
     to,

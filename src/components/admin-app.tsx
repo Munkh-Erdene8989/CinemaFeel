@@ -1728,7 +1728,7 @@ function SettingsAdmin({ settings, onSaved, notify }: { settings: Settings; onSa
         <div className="border-t border-white/[.07] pt-5">
           {([
             ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google, email эсвэл утасны дугаараар шинээр бүртгүүлж болно."],
-            ["notifications", "Контентын мэдэгдэл", "Шинэ контент нийтлэхэд имэйлтэй хэрэглэгчид киноны линк илгээнэ. Имэйл байхгүй бол утас руу SMS явна."],
+            ["notifications", "Контентын мэдэгдэл", "Шинэ контент нийтлэхэд, эсвэл шинэ бүтээгч нэгдэхэд имэйлтэй хэрэглэгчид мэдэгдэл илгээнэ. Шинэ кинонд имэйл байхгүй бол утас руу SMS явна. Бүтээгчийн мэдэгдэл зөвхөн имэйл."],
             ["maintenance", "Засварын горим", "Хэрэглэгчдэд түр хаалттай хуудас харуулна."],
           ] as const).map(([key, label, help]) => (
             <div key={key} className="flex items-center justify-between py-3">
@@ -1843,6 +1843,7 @@ function RevenueAdmin({ revenue, showOwners, days, onDays }: { revenue: RevenueR
 function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notify }: { staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: RevenueReport | null; payments: Payment[]; onStaff: (update: (staff: StaffAdmin[]) => StaffAdmin[]) => void; notify: (message: string) => void }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -1852,12 +1853,18 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
   const create = async () => {
     setError("");
     try {
-      const saved = await adminFetch<{ admin: StaffAdmin }>("/api/admin/staff", { method: "POST", body: JSON.stringify({ name, username, password }) });
+      const saved = await adminFetch<{ admin: StaffAdmin; welcomeError?: string; emailed?: number; notifyError?: string }>("/api/admin/staff", { method: "POST", body: JSON.stringify({ name, username, email, password }) });
       onStaff((current) => [saved.admin, ...current.filter((admin) => admin.id !== saved.admin.id)]);
       setName("");
       setUsername("");
+      setEmail("");
       setPassword("");
-      notify("Контент бүтээгч нэмэгдлээ.");
+      const note = [
+        "Контент бүтээгч нэмэгдлээ.",
+        saved.welcomeError || "Нэвтрэх мэдээллийг имэйлээр илгээлээ.",
+        saved.notifyError || (saved.emailed ? `${saved.emailed} хэрэглэгч рүү имэйл илгээлээ.` : ""),
+      ].filter(Boolean).join(" ");
+      notify(note);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Контент бүтээгч нэмэгдсэнгүй.");
     }
@@ -1881,11 +1888,12 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
     <div>
       <h2 className="text-2xl font-black">Контент бүтээгчид</h2>
       <p className="mt-1 text-sm text-zinc-600">Бүртгэлийн {formatMoney(CREATOR_FEE)} төлсөн бүтээгч админ хуудсыг шууд ашиглана. Super admin гараар нэмсэн бүтээгч төлбөргүй идэвхтэй. Нэр дээр дарж дэлгэрэнгүй харна.</p>
-      <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-4">
+      <div className="mt-6 grid gap-3 rounded-2xl border border-white/[.07] bg-[#141419] p-5 md:grid-cols-2 xl:grid-cols-5">
         <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Нэр" className="admin-input" />
         <input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="Нэвтрэх нэр" className="admin-input" autoCapitalize="none" />
+        <input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="И-мэйл" type="email" className="admin-input" autoCapitalize="none" />
         <input value={password} onChange={(e) => setPassword(e.target.value)} placeholder="Нууц үг" type="password" className="admin-input" />
-        <button disabled={!name.trim() || !username.trim() || password.length < 6} onClick={create} className="rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Бүтээгч нэмэх</button>
+        <button disabled={!name.trim() || !username.trim() || !email.includes("@") || password.length < 6} onClick={create} className="rounded-xl bg-white text-xs font-extrabold text-black disabled:opacity-40">Бүтээгч нэмэх</button>
       </div>
       {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">

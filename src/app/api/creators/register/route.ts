@@ -6,6 +6,7 @@ import { todayStamp } from "@/lib/format";
 import { adminDb } from "@/lib/firebase-admin";
 import { jsonError, siteOrigin } from "@/lib/http";
 import { createInvoice } from "@/lib/qpay";
+import { sendCreatorWelcome } from "@/lib/creator-notice";
 import { findInviter, hashPassword, normalizeUsername, uniqueInviteCode } from "@/lib/staff";
 import { CREATOR_FEE } from "@/lib/types";
 
@@ -97,6 +98,22 @@ export async function POST(request: NextRequest) {
     urls: invoice.urls || [],
   });
 
+  let welcomeSent = false;
+  try {
+    const welcomed = await sendCreatorWelcome({
+      creatorId: id,
+      email: draft.email,
+      name: profile.name,
+      username: profile.username,
+      password: draft.password,
+      ready: false,
+    });
+    welcomeSent = welcomed.ok;
+    if (!welcomed.ok) console.error("creator welcome email failed", welcomed.error);
+  } catch (error) {
+    console.error("creator welcome email failed", error);
+  }
+
   return NextResponse.json({
     senderInvoiceNo,
     qrImage: invoice.qr_image || "",
@@ -104,5 +121,6 @@ export async function POST(request: NextRequest) {
     urls: invoice.urls || [],
     amount: CREATOR_FEE,
     username: draft.username,
+    welcomeSent,
   });
 }

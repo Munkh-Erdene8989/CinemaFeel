@@ -125,6 +125,130 @@ export function releaseMessage(mail: ReleaseMail) {
   };
 }
 
+export type CreatorWelcome = {
+  name: string;
+  username: string;
+  password: string;
+  loginLink: string;
+  ready: boolean;
+};
+
+export function creatorWelcomeMessage(mail: CreatorWelcome) {
+  const name = mail.name.replace(/\s+/g, " ").trim() || "Бүтээгч";
+  const username = mail.username.trim();
+  const password = mail.password;
+  const lead = mail.ready
+    ? `${name}, таны CinemaFeel дашбоард нээгдлээ. Эхний богино түүхээ өнөөдөр оруулаарай — үзэгчид таныг хүлээж байна.`
+    : `${name}, бүртгэл чинь хадгалагдлаа. Төлбөр баталгаажмагц доорх нэр, нууц үгээр дашбоард руу орно. Эхний түүхээ бэлдээрэй.`;
+  const close = "Богино анги, том мэдрэмж. Таны булан CinemaFeel дээр таныг хүлээж байна.";
+  const accessNote = mail.ready
+    ? "Дашбоард одоо нээлттэй. Доорх мэдээллээр нэвтэрнэ үү."
+    : "Бүртгэлийн төлбөр баталгаажмагц энэ нэр, нууц үгээр нэвтэрнэ.";
+  const html = shell(
+    lead,
+    `<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.16em;color:#ff536a;">ДАШБОАРД</p>
+     <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;font-weight:800;">Нэвтрэх мэдээлэл</h1>
+     <p style="margin:14px 0 0;font-size:15px;line-height:1.7;color:#d4d4d8;">${escapeHtml(lead)}</p>
+     <p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#a1a1aa;">${escapeHtml(accessNote)}</p>
+     <p style="margin:18px 0 0;padding:16px 18px;border-radius:14px;background:#1c1c22;font-size:14px;line-height:1.8;color:#f4f4f5;">
+       Нэвтрэх нэр<br /><b style="font-size:16px;">${escapeHtml(username)}</b><br /><br />
+       Нууц үг<br /><b style="font-size:16px;">${escapeHtml(password)}</b>
+     </p>
+     <p style="margin:22px 0 0;">
+       <a href="${escapeHtml(mail.loginLink)}" style="display:inline-block;background:#ff3d56;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:12px;">Дашбоард руу нэвтрэх</a>
+     </p>
+     <p style="margin:18px 0 0;font-size:14px;line-height:1.7;color:#a1a1aa;">${escapeHtml(close)}</p>
+     <p style="margin:18px 0 0;font-size:12px;line-height:1.6;color:#71717a;">Нууц үгээ хэнд ч бүү дамжуулаарай. Нэвтэрсний дараа шинэ нууц үг тохируулж болно.</p>`,
+  );
+  const text = [
+    "Нэвтрэх мэдээлэл",
+    "",
+    lead,
+    "",
+    accessNote,
+    "",
+    `Нэвтрэх нэр: ${username}`,
+    `Нууц үг: ${password}`,
+    "",
+    close,
+    "",
+    `Дашбоард руу нэвтрэх: ${mail.loginLink}`,
+    "",
+    "Нууц үгээ хэнд ч бүү дамжуулаарай.",
+  ].join("\n");
+  return {
+    subject: "CinemaFeel дашбоард нээгдлээ",
+    html,
+    text,
+  };
+}
+
+export type CreatorNotice = {
+  name: string;
+  corner: string;
+  contentType: string;
+  link: string;
+};
+
+export function creatorNoticeMessage(mail: CreatorNotice) {
+  const name = mail.name.replace(/\s+/g, " ").trim() || "Шинэ бүтээгч";
+  const corner = mail.corner.replace(/\s+/g, " ").trim() || name;
+  const contentType = mail.contentType.replace(/\s+/g, " ").trim();
+  const lead = `${name} CinemaFeel-д нэгдлээ. ${corner} булан нээгдсэн — шинэ түүхийг хамгийн түрүүнд хүлээн аваарай.`;
+  const close = "Богино анги, том мэдрэмж. Шинэ булангийн эхний бүтээлийг алгасах хэрэггүй.";
+  const html = shell(
+    lead,
+    `<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.16em;color:#ff536a;">ШИНЭ БҮТЭЭГЧ</p>
+     <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;font-weight:800;">Шинэ булан нээгдлээ</h1>
+     <p style="margin:14px 0 0;font-size:15px;line-height:1.7;color:#d4d4d8;">${escapeHtml(lead)}</p>
+     <h2 style="margin:18px 0 0;font-size:22px;line-height:1.3;font-weight:800;">${escapeHtml(corner)}</h2>
+     ${contentType ? `<p style="margin:8px 0 0;font-size:13px;color:#a1a1aa;">${escapeHtml(contentType)}</p>` : ""}
+     <p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#a1a1aa;">${escapeHtml(close)}</p>
+     <p style="margin:22px 0 0;">
+       <a href="${escapeHtml(mail.link)}" style="display:inline-block;background:#ff3d56;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:12px;">Булан үзэх</a>
+     </p>
+     <p style="margin:22px 0 0;font-size:12px;line-height:1.6;color:#71717a;">Та CinemaFeel-д бүртгэлтэй учраас шинэ бүтээгчийг хамгийн түрүүнд авлаа.</p>`,
+  );
+  const lines = ["Шинэ булан нээгдлээ", "", lead, "", corner];
+  if (contentType) lines.push(contentType);
+  lines.push("", close, "", `Булан үзэх: ${mail.link}`);
+  return {
+    subject: `Шинэ бүтээгч: ${corner}`,
+    html,
+    text: lines.join("\n"),
+  };
+}
+
+type OutboundMail = {
+  subject: string;
+  html: string;
+  text: string;
+};
+
+export async function sendResendEmails(recipients: string[], message: OutboundMail, category: string, idempotencyPrefix: string) {
+  const resend = client();
+  if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
+  const tag = idempotencyPrefix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "mail";
+  const from = fromAddress();
+  for (let index = 0; index < recipients.length; index += 100) {
+    if (index > 0) await new Promise((resolve) => setTimeout(resolve, 150));
+    const chunk = recipients.slice(index, index + 100);
+    const { error } = await resend.batch.send(
+      chunk.map((to) => ({
+        from,
+        to: [to],
+        subject: message.subject,
+        html: message.html,
+        text: message.text,
+        tags: [{ name: "category", value: category }],
+      })),
+      { idempotencyKey: `${tag}/${index}` },
+    );
+    if (error) return { ok: false as const, error: error.message };
+  }
+  return { ok: true as const };
+}
+
 export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMail, seriesId: string, idempotencyKey?: string) {
   const resend = client();
   if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
