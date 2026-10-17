@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { creatorNoticeMessage, creatorWelcomeMessage } from "./mail.ts";
+import { broadcastMessage, creatorNoticeMessage, creatorWelcomeMessage, displayFrom } from "./mail.ts";
 
 test("welcome mail includes the dashboard link, username, password, and encouragement", () => {
   const message = creatorWelcomeMessage({
@@ -44,4 +44,18 @@ test("creator notice is email copy for viewers and hides credentials", () => {
   assert.match(message.text, /Драма/);
   assert.doesNotMatch(message.text, /Нууц үг/);
   assert.doesNotMatch(message.html, /password/i);
+});
+
+test("broadcast mail keeps the written copy and escapes html", () => {
+  const message = broadcastMessage("Шинэ долоо хоног", "Эхний мөр\n\n<script>alert(1)</script>");
+  assert.equal(message.subject, "Шинэ долоо хоног");
+  assert.match(message.text, /Эхний мөр/);
+  assert.match(message.html, /&lt;script&gt;/);
+  assert.doesNotMatch(message.html, /<script>/);
+});
+
+test("display name replaces the mailbox label", () => {
+  assert.equal(displayFrom("CinemaFeel <hello@cinemafeel.dev>", "Feel"), "Feel <hello@cinemafeel.dev>");
+  assert.equal(displayFrom("hello@cinemafeel.dev", "Feel"), "Feel <hello@cinemafeel.dev>");
+  assert.equal(displayFrom("CinemaFeel <hello@cinemafeel.dev>"), "CinemaFeel <hello@cinemafeel.dev>");
 });

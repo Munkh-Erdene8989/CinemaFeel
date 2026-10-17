@@ -2,6 +2,7 @@ import { FieldValue } from "firebase-admin/firestore";
 import { creatorCornerTitle, creatorPath } from "./creator-site";
 import { adminDb } from "./firebase-admin";
 import { creatorNoticeMessage, creatorWelcomeMessage, resendConfigured, sendResendEmails } from "./mail";
+import { marketingFromSettings } from "./marketing";
 import { sendWesendEmails, wesendConfigured } from "./wesend";
 
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -18,11 +19,16 @@ function publicSite() {
   }
 }
 
-async function deliver(recipients: string[], message: { subject: string; html: string; text: string }, category: string, key: string) {
+async function deliver(recipients: string[], message: { subject: string; html: string; text: string }, category: string, key: string, fromName: string) {
   if (!recipients.length) return { ok: true as const };
-  if (resendConfigured()) return sendResendEmails(recipients, message, category, key);
-  if (wesendConfigured()) return sendWesendEmails(recipients, message, key);
+  if (resendConfigured()) return sendResendEmails(recipients, message, category, key, fromName);
+  if (wesendConfigured()) return sendWesendEmails(recipients, message, key, fromName);
   return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
+}
+
+async function senderName() {
+  const settings = await adminDb().collection("settings").doc("app").get();
+  return marketingFromSettings(settings.data()).mailFromName;
 }
 
 export async function sendCreatorWelcome(input: {
@@ -42,7 +48,7 @@ export async function sendCreatorWelcome(input: {
     loginLink: `${publicSite()}/admin/login`,
     ready: input.ready,
   });
-  const sent = await deliver([email], message, "creator_welcome", `creator-welcome-${input.creatorId}-${Date.now()}`);
+  const sent = await deliver([email], message, "creator_welcome", `creator-welcome-${input.creatorId}-${Date.now()}`, await senderName());
   if (!sent.ok) return sent;
   await adminDb().collection("admins").doc(input.creatorId).set({ welcomeEmail: "sent", welcomeEmailedAt: Date.now() }, { merge: true });
   return { ok: true as const };
@@ -62,7 +68,9 @@ async function userEmails() {
 
 async function announce(creatorId: string) {
   const settings = await adminDb().collection("settings").doc("app").get();
+  const channels = marketingFromSettings(settings.data());
   if (settings.exists && settings.data()?.notifications === false) return { emailed: 0 };
+  if (!channels.emailEnabled) return { emailed: 0 };
 
   const ref = adminDb().collection("admins").doc(creatorId);
   const snap = await ref.get();
@@ -96,7 +104,7 @@ async function announce(creatorId: string) {
   });
 
   try {
-    const sent = await deliver(emails, message, "new_creator", `new-creator-${creatorId}`);
+    const sent = await deliver(emails, message, "new_creator", `new-creator-${creatorId}`, channels.mailFromName);
     if (!sent.ok) {
       await ref.set({ announcedToUsersAt: FieldValue.delete() }, { merge: true });
       return { emailed: 0, notifyError: sent.error || "Шинэ бүтээгчийн имэйл илгээгдсэнгүй." };

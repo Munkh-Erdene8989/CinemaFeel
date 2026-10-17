@@ -1,3 +1,5 @@
+import { marketingFromSettings } from "./marketing";
+
 export type Access = "free" | "paid";
 export type SeriesStatus = "Нийтлэгдсэн" | "Ноорог";
 export type Plan = "Үндсэн" | "Plus";
@@ -160,6 +162,9 @@ export type Settings = {
   maintenance: boolean;
   registration: boolean;
   notifications: boolean;
+  emailEnabled: boolean;
+  smsEnabled: boolean;
+  mailFromName: string;
   genres: string[];
 };
 
@@ -172,6 +177,9 @@ export const defaultSettings: Settings = {
   maintenance: false,
   registration: true,
   notifications: true,
+  emailEnabled: true,
+  smsEnabled: true,
+  mailFromName: "CinemaFeel",
   genres: defaultGenres,
 };
 
@@ -193,6 +201,7 @@ export function mergeSettings(data?: Partial<Settings> | null): Settings {
   return {
     ...defaultSettings,
     ...data,
+    ...marketingFromSettings(data),
     genres: normalizeGenres(data?.genres),
   };
 }

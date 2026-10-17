@@ -2,6 +2,7 @@ import { createHash, randomInt } from "crypto";
 import { NextRequest } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { jsonError } from "@/lib/http";
+import { marketingFromSettings } from "@/lib/marketing";
 import { resendConfigured, sendOtpEmail } from "@/lib/mail";
 import { NextResponse } from "next/server";
 
@@ -25,7 +26,8 @@ export async function POST(request: NextRequest) {
 
   const code = String(randomInt(0, 1_000_000)).padStart(6, "0");
   try {
-    const sent = await sendOtpEmail(email, code);
+    const settings = await adminDb().collection("settings").doc("app").get();
+    const sent = await sendOtpEmail(email, code, marketingFromSettings(settings.data()).mailFromName);
     if (!sent.ok) return jsonError("Имэйл илгээж чадсангүй. Дахин оролдоно уу.", 502);
   } catch {
     return jsonError("Имэйл илгээж чадсангүй. Дахин оролдоно уу.", 502);

@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { coverFilm, isMature, matureCatalog, normalizeAge, publicCatalog } from "./mature.ts";
+import { coverFilm, isMature, matureCatalog, normalizeAge, publicCatalog, releaseEmailImage } from "./mature.ts";
 
 test("18+ age or genre is mature", () => {
   assert.equal(isMature({ age: "18+" }), true);
@@ -21,5 +21,12 @@ test("mature titles stay off the public feed and cover", () => {
   assert.deepEqual(publicCatalog(series).map((film) => film.id), ["safe"]);
   assert.deepEqual(matureCatalog(series).map((film) => film.id), ["cover", "shelf"]);
   assert.equal(coverFilm(series)?.id, "safe");
+});
+
+test("mature email uses the poster when the web cover is absent", () => {
+  assert.equal(releaseEmailImage({ age: "18+", cover: "", image: "https://poster" }), "https://poster");
+  assert.equal(releaseEmailImage({ genre: "+18", cover: "https://cover", image: "https://poster" }), "https://poster");
+  assert.equal(releaseEmailImage({ age: "13+", cover: "", image: "https://poster" }), "");
+  assert.equal(releaseEmailImage({ age: "13+", cover: "https://cover", image: "https://poster" }), "https://cover");
 });
 

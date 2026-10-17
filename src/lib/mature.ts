@@ -25,6 +25,17 @@ export function matureCatalog<T extends { age?: unknown; genre?: unknown }>(seri
   return series.filter((film) => isMature(film));
 }
 
+function httpUrl(value: unknown) {
+  const url = String(value ?? "").trim();
+  return /^https?:\/\//i.test(url) ? url : "";
+}
+
+export function releaseEmailImage(film: { age?: unknown; genre?: unknown; cover?: unknown; image?: unknown }) {
+  const cover = httpUrl(film.cover);
+  const poster = httpUrl(film.image);
+  return isMature(film) ? poster || cover : cover;
+}
+
 export function coverFilm<T extends { age?: unknown; genre?: unknown; featured?: boolean }>(series: T[]) {
   const safe = publicCatalog(series);
   return safe.find((film) => film.featured) ?? safe[0];

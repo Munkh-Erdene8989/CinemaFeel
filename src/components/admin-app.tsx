@@ -148,7 +148,7 @@ export function AdminApp() {
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Тохиргоо", "settings"]]
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
     : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"]];
 
   const notify = (message: string) => {
@@ -382,6 +382,7 @@ export function AdminApp() {
           }} />}
           {section === "Төлбөр" && superAdmin && !paymentsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} notify={notify} />}
+          {section === "Маркетинг" && superAdmin && <MarketingAdmin settings={settings} onSaved={setSettings} notify={notify} />}
           {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} onSaved={setSettings} notify={notify} />}
         </div>
       </main>
@@ -1698,6 +1699,181 @@ function DiscountsAdmin({ notify }: { notify: (message: string) => void }) {
           busy={busy}
           onCancel={() => setPending(null)}
           onConfirm={() => remove(pending)}
+        />
+      )}
+    </div>
+  );
+}
+
+function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onSaved: (settings: Settings) => void; notify: (message: string) => void }) {
+  const [emailEnabled, setEmailEnabled] = useState(settings.emailEnabled);
+  const [smsEnabled, setSmsEnabled] = useState(settings.smsEnabled);
+  const [mailFromName, setMailFromName] = useState(settings.mailFromName);
+  const [channels, setChannels] = useState<{ resend: boolean; wesend: boolean; fromEmail: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [sendEmail, setSendEmail] = useState(true);
+  const [sendSms, setSendSms] = useState(false);
+  const [subject, setSubject] = useState("");
+  const [mailBody, setMailBody] = useState("");
+  const [smsBody, setSmsBody] = useState("");
+  const [composeError, setComposeError] = useState("");
+  const [composeBusy, setComposeBusy] = useState(false);
+  const [preview, setPreview] = useState<{ emails: number; phones: number; smsText: string; key: string; email: boolean; sms: boolean; subject: string; body: string; smsBody: string } | null>(null);
+  const sending = useRef(false);
+  useEffect(() => {
+    setEmailEnabled(settings.emailEnabled);
+    setSmsEnabled(settings.smsEnabled);
+    setMailFromName(settings.mailFromName);
+  }, [settings]);
+  useEffect(() => {
+    adminFetch<{ channels: { resend: boolean; wesend: boolean; fromEmail: string } }>("/api/admin/marketing")
+      .then((data) => setChannels(data.channels))
+      .catch(() => setChannels(null));
+  }, []);
+  const save = async () => {
+    setBusy(true);
+    try {
+      const saved = await adminFetch<{ settings: Settings }>("/api/admin/marketing", {
+        method: "PUT",
+        body: JSON.stringify({ emailEnabled, smsEnabled, mailFromName }),
+      });
+      onSaved(saved.settings);
+      notify("Маркетингийн тохиргоо хадгалагдлаа.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Маркетингийн тохиргоо хадгалагдсангүй.");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const previewSend = async () => {
+    setComposeError("");
+    setComposeBusy(true);
+    const payload = { email: sendEmail, sms: sendSms, subject, body: mailBody, smsBody };
+    try {
+      const data = await adminFetch<{ preview: true; emails: number; phones: number; smsText: string }>("/api/admin/marketing/send", {
+        method: "POST",
+        body: JSON.stringify(payload),
+      });
+      setPreview({ ...data, ...payload, key: crypto.randomUUID().replace(/-/g, "") });
+    } catch (cause) {
+      setComposeError(cause instanceof Error ? cause.message : "Илгээлтийг бэлдэж чадсангүй.");
+    } finally {
+      setComposeBusy(false);
+    }
+  };
+  const confirmSend = async () => {
+    if (!preview || sending.current) return;
+    sending.current = true;
+    setComposeBusy(true);
+    setComposeError("");
+    try {
+      const sent = await adminFetch<{ emailed: number; smsed: number }>("/api/admin/marketing/send", {
+        method: "POST",
+        body: JSON.stringify({
+          email: preview.email,
+          sms: preview.sms,
+          subject: preview.subject,
+          body: preview.body,
+          smsBody: preview.smsBody,
+          confirm: true,
+          idempotencyKey: preview.key,
+        }),
+      });
+      const parts = [sent.emailed ? `${sent.emailed} имэйл` : "", sent.smsed ? `${sent.smsed} SMS` : ""].filter(Boolean);
+      notify(parts.length ? `${parts.join(", ")} илгээлээ.` : "Илгээлээ.");
+      setSubject("");
+      setMailBody("");
+      setSmsBody("");
+      setPreview(null);
+    } catch (cause) {
+      setComposeError(cause instanceof Error ? cause.message : "Илгээгдсэнгүй.");
+      setPreview(null);
+    } finally {
+      sending.current = false;
+      setComposeBusy(false);
+    }
+  };
+  const previewText = preview
+    ? `${[preview.emails ? `${preview.emails} имэйл` : "", preview.phones ? `${preview.phones} SMS` : ""].filter(Boolean).join(", ")} руу илгээнэ.${preview.smsText ? ` SMS: ${preview.smsText}` : ""}`
+    : "";
+  return (
+    <div className="max-w-2xl">
+      <h2 className="text-2xl font-black">Маркетинг</h2>
+      <p className="mt-1 text-sm text-zinc-600">Имэйл болон SMS илгээх сувгийг зөвхөн super admin удирдана. API түлхүүр серверийн орчинд хадгалагдана.</p>
+      {!settings.notifications && <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs font-bold text-amber-200">Ерөнхий тохиргооны «Контентын мэдэгдэл» унтраалттай тул шинэ контент, шинэ бүтээгчийн мэдэгдэл явахгүй. Доорх шууд илгээлт энэ унтраалтаас хамаарахгүй.</p>}
+      <div className="mt-7 space-y-5">
+        <section className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <h3 className="text-lg font-black">Шууд илгээх</h3>
+          <p className="mt-1 text-xs leading-5 text-zinc-600">Агуулгаа энд бичээд идэвхтэй хэрэглэгч рүү илгээнэ. Түр зогссон бүртгэл орохгүй.</p>
+          <div className="mt-5 flex gap-2">
+            {([["Имэйл", sendEmail, setSendEmail], ["SMS", sendSms, setSendSms]] as const).map(([label, on, toggle]) => (
+              <button key={label} type="button" aria-pressed={on} onClick={() => toggle((value) => !value)} className={`rounded-full px-4 py-2 text-xs font-bold ${on ? "bg-white text-black" : "border border-white/10 text-zinc-400"}`}>{label}</button>
+            ))}
+          </div>
+          <div className="mt-5 space-y-5">
+            {sendEmail && (
+              <>
+                <AdminField label="Гарчиг">
+                  <input value={subject} maxLength={120} onChange={(event) => setSubject(event.target.value)} placeholder="Захидлын гарчиг" className="admin-input" />
+                </AdminField>
+                <AdminField label="Имэйлийн агуулга">
+                  <textarea value={mailBody} maxLength={4000} onChange={(event) => setMailBody(event.target.value)} placeholder="Хэрэглэгчид хэлэх зүйлээ бичнэ үү." className="admin-input h-36 py-3" />
+                </AdminField>
+              </>
+            )}
+            {sendSms && (
+              <AdminField label="SMS агуулга">
+                <textarea value={smsBody} maxLength={300} onChange={(event) => setSmsBody(event.target.value)} placeholder="Богино мессеж" className="admin-input h-24 py-3" />
+                <span className="mt-2 block text-xs text-zinc-600">{smsBody.length}/300 · Кирилл үсэг латин болж илгээгдэнэ.</span>
+              </AdminField>
+            )}
+          </div>
+          {composeError && <p className="mt-4 text-xs font-bold text-red-400">{composeError}</p>}
+          <button type="button" onClick={previewSend} disabled={composeBusy} className="mt-5 rounded-xl bg-[#ff3d56] px-5 py-3 text-xs font-extrabold text-white disabled:opacity-60">{composeBusy && !preview ? "Бэлдэж байна..." : "Илгээх"}</button>
+        </section>
+        <section className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black">Имэйл</h3>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">Шинэ контент болон шинэ бүтээгчийн мэдэгдэл. Нэвтрэх код, бүтээгчийн нэвтрэх имэйл энэ унтраалтаас хамаарахгүй.</p>
+            </div>
+            <button type="button" onClick={() => setEmailEnabled((value) => !value)} aria-pressed={emailEnabled} aria-label="Имэйл илгээх" className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition ${emailEnabled ? "bg-[#ff3d56]" : "bg-zinc-700"}`}>
+              <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${emailEnabled ? "left-6" : "left-1"}`} />
+            </button>
+          </div>
+          <div className="mt-5 space-y-2">
+            <p className={`text-xs font-bold ${channels?.resend ? "text-emerald-400" : "text-amber-400"}`}>Resend: {channels ? (channels.resend ? "бэлэн" : "тохиргоо дутуу") : "шалгаж байна..."}</p>
+            <p className={`text-xs font-bold ${channels?.wesend ? "text-emerald-400" : "text-zinc-500"}`}>WeSend имэйл: {channels ? (channels.wesend ? "бэлэн, нөөц суваг" : "тохиргоо дутуу") : "шалгаж байна..."}</p>
+            {channels?.fromEmail && <p className="text-xs text-zinc-500">Илгээгч: {channels.fromEmail}</p>}
+          </div>
+          <div className="mt-5">
+            <AdminField label="Илгээгчийн нэр">
+              <input value={mailFromName} maxLength={40} onChange={(event) => setMailFromName(event.target.value)} className="admin-input" />
+            </AdminField>
+          </div>
+        </section>
+        <section className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black">SMS</h3>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">Имэйлгүй хэрэглэгчийн утас руу шинэ контентийн SMS. 18+ контентод SMS явахгүй. Утасны баталгаажуулалт тусдаа.</p>
+            </div>
+            <button type="button" onClick={() => setSmsEnabled((value) => !value)} aria-pressed={smsEnabled} aria-label="SMS илгээх" className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition ${smsEnabled ? "bg-[#ff3d56]" : "bg-zinc-700"}`}>
+              <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${smsEnabled ? "left-6" : "left-1"}`} />
+            </button>
+          </div>
+          <p className={`mt-5 text-xs font-bold ${channels?.wesend ? "text-emerald-400" : "text-amber-400"}`}>WeSend SMS: {channels ? (channels.wesend ? "бэлэн" : "тохиргоо дутуу") : "шалгаж байна..."}</p>
+        </section>
+        <button type="button" onClick={save} disabled={busy} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black disabled:opacity-60">{busy ? "Хадгалж байна..." : "Өөрчлөлт хадгалах"}</button>
+      </div>
+      {preview && (
+        <ConfirmModal
+          title="Илгээх үү?"
+          body={previewText}
+          confirmLabel={composeBusy ? "Илгээж байна..." : "Илгээх"}
+          busy={composeBusy}
+          onCancel={() => { if (!composeBusy) setPreview(null); }}
+          onConfirm={confirmSend}
         />
       )}
     </div>

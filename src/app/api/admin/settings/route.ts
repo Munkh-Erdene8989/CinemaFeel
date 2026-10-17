@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, requireSuper } from "@/lib/http";
+import { marketingFromSettings } from "@/lib/marketing";
 import { defaultSettings, mergeSettings, normalizeGenres, type Settings } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -22,6 +23,11 @@ export async function PUT(request: NextRequest) {
     maintenance: Boolean(body.maintenance),
     registration: Boolean(body.registration),
     notifications: Boolean(body.notifications),
+    ...marketingFromSettings({
+      emailEnabled: typeof body.emailEnabled === "boolean" ? body.emailEnabled : current.emailEnabled,
+      smsEnabled: typeof body.smsEnabled === "boolean" ? body.smsEnabled : current.smsEnabled,
+      mailFromName: body.mailFromName ?? current.mailFromName,
+    }),
     genres: normalizeGenres(body.genres ?? current.genres),
   };
   await adminDb().collection("settings").doc("app").set(settings);

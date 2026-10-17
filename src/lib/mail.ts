@@ -15,6 +15,15 @@ function fromAddress() {
   return (process.env.RESEND_FROM_EMAIL || "").trim().replace(/^["']|["']$/g, "");
 }
 
+export function displayFrom(raw: string, fromName?: string) {
+  const from = raw.trim().replace(/^["']|["']$/g, "");
+  if (!fromName?.trim()) return from;
+  const name = fromName.replace(/[<>"\r\n]/g, "").replace(/\s+/g, " ").trim().slice(0, 40) || "CinemaFeel";
+  const email = from.match(/<([^>]+)>/)?.[1]?.trim() || from;
+  if (!email.includes("@")) return from;
+  return `${name} <${email}>`;
+}
+
 export function resendConfigured() {
   return Boolean(process.env.RESEND_API_KEY && fromAddress());
 }
@@ -54,7 +63,7 @@ function shell(preheader: string, body: string) {
 </html>`;
 }
 
-export async function sendOtpEmail(email: string, code: string) {
+export async function sendOtpEmail(email: string, code: string, fromName?: string) {
   const resend = client();
   if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
   const digits = escapeHtml(code);
@@ -67,7 +76,7 @@ export async function sendOtpEmail(email: string, code: string) {
      <p style="margin:18px 0 0;font-size:13px;line-height:1.6;color:#71717a;">Энэ кодыг хэн ч танаас асуух ёсгүй. Хэрэв та нэвтрэхийг хүсээгүй бол энэ захиаг устгана уу.</p>`,
   );
   const { error } = await resend.emails.send({
-    from: fromAddress(),
+    from: displayFrom(fromAddress(), fromName),
     to: [email],
     subject: `${code} — CinemaFeel баталгаажуулах код`,
     html,
@@ -88,6 +97,21 @@ function releaseCopy(mail: ReleaseMail) {
     ? "Богино анги. Том мэдрэмж. Өнөө орой нэг бүлэг нээхэд л хангалттай."
     : "Богино анги, гүн мэдрэмж. Өнөө орой нэг бүлэгт цаг гаргаарай — эхний анги таныг хүлээж байна.";
   return { title, description, meta, lead, close };
+}
+
+export function broadcastMessage(subject: string, body: string) {
+  const title = subject.replace(/\s+/g, " ").trim();
+  const copy = body.replace(/\r\n/g, "\n").trim();
+  const blocks = copy.split(/\n{2,}/).map((block) => (
+    `<p style="margin:14px 0 0;font-size:15px;line-height:1.7;color:#e4e4e7;">${escapeHtml(block).replace(/\n/g, "<br />")}</p>`
+  )).join("");
+  const html = shell(
+    title,
+    `<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.16em;color:#ff536a;">МЭДЭГДЭЛ</p>
+     <h1 style="margin:10px 0 0;font-size:28px;line-height:1.2;font-weight:800;">${escapeHtml(title)}</h1>
+     ${blocks}`,
+  );
+  return { subject: title, html, text: `${title}\n\n${copy}` };
 }
 
 export function releaseMessage(mail: ReleaseMail) {
@@ -225,11 +249,11 @@ type OutboundMail = {
   text: string;
 };
 
-export async function sendResendEmails(recipients: string[], message: OutboundMail, category: string, idempotencyPrefix: string) {
+export async function sendResendEmails(recipients: string[], message: OutboundMail, category: string, idempotencyPrefix: string, fromName?: string) {
   const resend = client();
   if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
   const tag = idempotencyPrefix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "mail";
-  const from = fromAddress();
+  const from = displayFrom(fromAddress(), fromName);
   for (let index = 0; index < recipients.length; index += 100) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 150));
     const chunk = recipients.slice(index, index + 100);
@@ -249,12 +273,12 @@ export async function sendResendEmails(recipients: string[], message: OutboundMa
   return { ok: true as const };
 }
 
-export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMail, seriesId: string, idempotencyKey?: string) {
+export async function sendNewReleaseEmail(recipients: string[], mail: ReleaseMail, seriesId: string, idempotencyKey?: string, fromName?: string) {
   const resend = client();
   if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
   const message = releaseMessage(mail);
   const tagId = seriesId.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "series";
-  const from = fromAddress();
+  const from = displayFrom(fromAddress(), fromName);
 
   for (let index = 0; index < recipients.length; index += 100) {
     if (index > 0) await new Promise((resolve) => setTimeout(resolve, 150));

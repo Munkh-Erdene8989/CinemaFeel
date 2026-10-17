@@ -115,14 +115,14 @@ async function sendChunks(path: string, recipients: string[], seriesId: string, 
   return { ok: true as const };
 }
 
-export async function sendReleaseEmails(recipients: string[], mail: ReleaseMail, seriesId: string) {
+export async function sendReleaseEmails(recipients: string[], mail: ReleaseMail, seriesId: string, fromName = "CinemaFeel") {
   const message = releaseMessage(mail);
   return sendChunks("/email/bulk", recipients, seriesId, "email", (to) => ({
     to,
     subject: message.subject,
     html: message.html,
     text: message.text,
-    from_name: "CinemaFeel",
+    from_name: fromName,
   }));
 }
 
@@ -130,6 +130,7 @@ export async function sendWesendEmails(
   recipients: string[],
   message: { subject: string; html: string; text: string },
   idempotencyPrefix: string,
+  fromName = "CinemaFeel",
 ) {
   const tag = idempotencyPrefix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "mail";
   for (let index = 0; index < recipients.length; index += BULK_LIMIT) {
@@ -139,11 +140,30 @@ export async function sendWesendEmails(
       subject: message.subject,
       html: message.html,
       text: message.text,
-      from_name: "CinemaFeel",
+      from_name: fromName,
     }, `${tag}/${index}`);
     if (!sent.ok) return sent;
   }
   return { ok: true as const };
+}
+
+export function marketingSmsText(input: string) {
+  const text = cyrillicToLatin(input).replace(/[ \t]+\n/g, "\n").replace(/\n[ \t]+/g, "\n").replace(/[ \t]{2,}/g, " ").replace(/\n{3,}/g, "\n\n").trim();
+  if (!text) return { ok: false as const, error: "SMS агуулга оруулна уу." };
+  if (text.length > SMS_CHAR_LIMIT) return { ok: false as const, error: "SMS латин хөрвүүлсний дараа 300 тэмдэгтээс урт байна." };
+  return { ok: true as const, text };
+}
+
+export async function sendCustomSms(recipients: string[], text: string, idempotencyPrefix: string) {
+  const prepared = marketingSmsText(text);
+  if (!prepared.ok) return prepared;
+  const tag = idempotencyPrefix.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 80) || "sms";
+  for (let index = 0; index < recipients.length; index += BULK_LIMIT) {
+    const chunk = recipients.slice(index, index + BULK_LIMIT);
+    const sent = await postBulk("/sms/bulk", { to: chunk, text: prepared.text }, `${tag}/sms/${index}`);
+    if (!sent.ok) return sent;
+  }
+  return { ok: true as const, text: prepared.text };
 }
 
 export async function sendReleaseSms(recipients: string[], title: string, link: string, seriesId: string) {
