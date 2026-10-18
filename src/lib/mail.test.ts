@@ -52,6 +52,8 @@ test("broadcast mail keeps the written copy and escapes html", () => {
   assert.match(message.text, /Эхний мөр/);
   assert.match(message.html, /&lt;script&gt;/);
   assert.doesNotMatch(message.html, /<script>/);
+  assert.match(message.html, /https:\/\/cinemafeel\.dev\/feel-cinema-logo\.png/);
+  assert.match(message.html, /alt="feel cinema"/);
 });
 
 test("display name replaces the mailbox label", () => {

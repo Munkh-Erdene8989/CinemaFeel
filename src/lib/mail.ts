@@ -42,7 +42,21 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
+function publicSite() {
+  const configured = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/$/, "");
+  if (!configured) return "https://cinemafeel.dev";
+  try {
+    const url = new URL(configured);
+    if (url.hostname === "localhost" || url.hostname === "127.0.0.1") return "https://cinemafeel.dev";
+    return configured;
+  } catch {
+    return "https://cinemafeel.dev";
+  }
+}
+
 function shell(preheader: string, body: string) {
+  const site = publicSite();
+  const logo = `${site}/feel-cinema-logo.png`;
   return `<!DOCTYPE html>
 <html lang="mn">
 <head><meta charset="utf-8" /><meta name="viewport" content="width=device-width,initial-scale=1" /></head>
@@ -51,7 +65,11 @@ function shell(preheader: string, body: string) {
   <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background:#070709;padding:32px 12px;">
     <tr><td align="center">
       <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;background:#121216;border-radius:20px;overflow:hidden;">
-        <tr><td style="padding:28px 28px 0;font-family:Georgia,'Times New Roman',serif;font-size:13px;letter-spacing:0.22em;color:#ff536a;">CINEMAFEEL</td></tr>
+        <tr><td style="padding:28px 28px 0;">
+          <a href="${escapeHtml(site)}" style="text-decoration:none;">
+            <img src="${escapeHtml(logo)}" alt="feel cinema" width="139" height="84" style="display:block;border:0;outline:none;width:139px;height:auto;" />
+          </a>
+        </td></tr>
         <tr><td style="padding:18px 28px 32px;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;color:#f4f4f5;">
           ${body}
         </td></tr>

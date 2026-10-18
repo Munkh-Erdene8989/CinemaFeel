@@ -268,7 +268,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               {creatorChrome ? (
                 <a href={homeHref} className="block max-w-[46vw] truncate text-lg font-black tracking-tight sm:max-w-xs sm:text-xl" aria-label={`${brandName} нүүр`}>{brandName}</a>
               ) : (
-                <Logo href="/" />
+                <Logo href="/" header />
               )}
             </span>
             {!creatorChrome && (

@@ -35,11 +35,11 @@ export function Icon({ name, className = "h-5 w-5", fill = false }: { name: stri
   );
 }
 
-export function Logo({ onClick, href = "/" }: { onClick?: () => void; href?: string }) {
-  const image = (
-    <span className="relative block h-10 w-36 overflow-hidden rounded-lg bg-[#f1f2f4] sm:w-44">
-      <img src="/cinemafeel-logo.jpg" alt="CinemaFeel" className="absolute left-1/2 top-1/2 w-44 max-w-none -translate-x-1/2 -translate-y-1/2 sm:w-52" />
-    </span>
+export function Logo({ onClick, href = "/", header = false }: { onClick?: () => void; href?: string; header?: boolean }) {
+  const image = header ? (
+    <img src="/cinema-feel-header.png" alt="cinema feel" className="h-9 w-auto sm:h-11" />
+  ) : (
+    <img src="/feel-cinema-logo.png" alt="feel cinema" className="h-11 w-auto sm:h-12" />
   );
   if (onClick) {
     return (
