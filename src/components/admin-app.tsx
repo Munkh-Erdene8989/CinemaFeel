@@ -12,7 +12,7 @@ import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
 import { KnowledgeAdmin } from "./knowledge-admin";
 import { YoutubeEpisodeForm } from "./youtube-episode-form";
-import { AdminField, FilePicker, Icon, Logo, Modal } from "./icons";
+import { AdminField, FilePicker, Icon, ImageDrop, Logo, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -958,6 +958,20 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
   );
 }
 
+function useObjectUrl(file: File | null) {
+  const [url, setUrl] = useState("");
+  useEffect(() => {
+    if (!file) {
+      setUrl("");
+      return;
+    }
+    const next = URL.createObjectURL(file);
+    setUrl(next);
+    return () => URL.revokeObjectURL(next);
+  }, [file]);
+  return url;
+}
+
 function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }: { film: SeriesWithEpisodes | null; genres: string[]; canAddGenre: boolean; onGenres: (genres: string[]) => void; onClose: () => void; onSaved: (message: string) => Promise<void> }) {
   const [form, setForm] = useState({
     title: film?.title ?? "",
@@ -988,9 +1002,13 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
   const [shareCode, setShareCode] = useState(film?.shareCode ?? "");
   const [copied, setCopied] = useState(false);
   const [newGenre, setNewGenre] = useState("");
+  const [posterFile, setPosterFile] = useState<File | null>(null);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
   const [busy, setBusy] = useState("");
   const [error, setError] = useState("");
   const [mailed, setMailed] = useState("");
+  const posterPreview = useObjectUrl(posterFile);
+  const coverPreview = useObjectUrl(coverFile);
   const mailNote = useRef("");
   const genreOptions = genres.includes(form.genre) || !form.genre ? genres : [form.genre, ...genres];
   const mature = isMature(form);
@@ -1031,10 +1049,8 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     }
   };
 
-  const onPoster = async (file: File) => {
-    const id = seriesId || (await saveMeta());
-    if (!id) return;
-    setBusy("Постер хуулж байна...");
+  const pushPoster = async (file: File, id: string) => {
+    setBusy("Thumbnail хуулж байна...");
     try {
       const storagePath = await uploadAdminFile(file, "poster", id);
       const saved = await adminFetch<{ image: string; notified?: number; notifyError?: string; notifyPending?: string }>(`/api/admin/series/${id}`, {
@@ -1042,17 +1058,18 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
         body: JSON.stringify({ posterPath: storagePath }),
       });
       update("image", saved.image);
+      setPosterFile(null);
       rememberMail(saved);
       setBusy("");
+      return true;
     } catch (cause) {
       setBusy("");
-      setError(cause instanceof Error ? cause.message : "Постер хуулж чадсангүй.");
+      setError(cause instanceof Error ? cause.message : "Thumbnail хуулж чадсангүй.");
+      return false;
     }
   };
 
-  const onCover = async (file: File) => {
-    const id = seriesId || (await saveMeta());
-    if (!id) return;
+  const pushCover = async (file: File, id: string) => {
     setBusy("Вэбсайт ковер хуулж байна...");
     try {
       const storagePath = await uploadAdminFile(file, "cover", id);
@@ -1061,13 +1078,46 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
         body: JSON.stringify({ coverPath: storagePath }),
       });
       update("cover", saved.cover);
+      setCoverFile(null);
       if (saved.shareCode) setShareCode(saved.shareCode);
       rememberMail(saved);
       setBusy("");
+      return true;
     } catch (cause) {
       setBusy("");
       setError(cause instanceof Error ? cause.message : "Ковер хуулж чадсангүй.");
+      return false;
     }
+  };
+
+  const onPoster = async (file: File) => {
+    setPosterFile(file);
+    setError("");
+    if (!seriesId && !form.title.trim()) return;
+    const id = seriesId || (await saveMeta());
+    if (!id) return;
+    await pushPoster(file, id);
+  };
+
+  const onCover = async (file: File) => {
+    setCoverFile(file);
+    setError("");
+    if (!seriesId && !form.title.trim()) return;
+    const id = seriesId || (await saveMeta());
+    if (!id) return;
+    await pushCover(file, id);
+  };
+
+  const persistImages = async (id: string) => {
+    if (posterFile) {
+      const saved = await pushPoster(posterFile, id);
+      if (!saved) return false;
+    }
+    if (coverFile && !mature) {
+      const saved = await pushCover(coverFile, id);
+      if (!saved) return false;
+    }
+    return true;
   };
 
   const addEpisode = async (file: File, title: string, onProgress?: (percent: number) => void) => {
@@ -1100,10 +1150,46 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
   };
 
   return (
-    <Modal onClose={onClose} wide>
+    <Modal onClose={onClose} size="lg">
       <div className="max-h-[85vh] overflow-y-auto p-7 md:p-9">
         <p className="text-xs font-black uppercase tracking-[.18em] text-[#ff536a]">{film ? "Контент засах" : "Шинэ контент"}</p>
         <h2 className="mt-2 text-2xl font-black">{form.title || "Мэдээлэл оруулах"}</h2>
+        <section className="mt-6 rounded-3xl border border-white/[.08] bg-black/25 p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-400">Зураг</p>
+              <p className="mt-1 text-xs text-zinc-500">Дарж сонгох, эсвэл зургаа чирж оруулна.</p>
+            </div>
+            <p className="text-[11px] font-bold text-zinc-600">Ковер 21:9 · Thumbnail 2:3</p>
+          </div>
+          <div className="mt-4 grid items-stretch gap-4 sm:grid-cols-[minmax(0,1fr)_10.5rem]">
+            <div>
+              {mature ? (
+                <div className="flex h-full min-h-36 flex-col justify-end rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm font-black">Вэбсайт ковер</p>
+                  <p className="mt-2 max-w-md text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй. Thumbnail нь зөвхөн +18 ангилалд харагдана.</p>
+                </div>
+              ) : (
+                <ImageDrop wide badge="Ковер" label="Вэбсайт ковер" hint="Нүүр хуудсанд харагдах өргөн зураг" src={coverPreview || form.cover} ratio="aspect-[21/9]" onFile={(file) => void onCover(file)} />
+              )}
+            </div>
+            <div className="mx-auto w-36 sm:mx-0 sm:w-auto">
+              <ImageDrop badge="Thumbnail" label="Киноны thumbnail" hint="Карт дээр харагдана" src={posterPreview || form.image} ratio="aspect-[2/3]" onFile={(file) => void onPoster(file)} />
+            </div>
+          </div>
+          {(posterFile || (coverFile && !mature)) && !busy && (
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px]">
+              {!(form.title.trim() || seriesId) && <p className="font-bold text-[#ff6679]">Нэр оруулсны дараа хадгалахад орно.</p>}
+              {coverFile && !mature && <button type="button" onClick={() => setCoverFile(null)} className="font-bold text-zinc-500 hover:text-white">Ковер болих</button>}
+              {posterFile && <button type="button" onClick={() => setPosterFile(null)} className="font-bold text-zinc-500 hover:text-white">Thumbnail болих</button>}
+            </div>
+          )}
+          <div className="mt-4">
+            <AdminField label="Thumbnail холбоос">
+              <input value={form.image} onChange={(e) => update("image", e.target.value)} placeholder="Эсвэл зургийн холбоос буулгана уу" className="admin-input" />
+            </AdminField>
+          </div>
+        </section>
         <div className="mt-7 grid gap-5 sm:grid-cols-2">
           <AdminField label="Нэр"><input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Киноны нэр" className="admin-input" /></AdminField>
           <AdminField label="Төрөл">
@@ -1145,26 +1231,6 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           </AdminField>
           <div className="sm:col-span-2">
             <AdminField label="Тайлбар"><textarea value={form.description} onChange={(e) => update("description", e.target.value)} className="admin-input h-24 py-3" /></AdminField>
-          </div>
-          <AdminField label="Постерын URL"><input value={form.image} onChange={(e) => update("image", e.target.value)} className="admin-input" /></AdminField>
-          <AdminField label="Постер файл"><FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" onFile={(file) => file && onPoster(file)} /></AdminField>
-          <div className="sm:col-span-2">
-            <AdminField label="Вэбсайт ковер">
-              {mature ? (
-                <p className="rounded-xl border border-white/10 px-4 py-3 text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй. Постер нь зөвхөн +18 ангилалд харагдана.</p>
-              ) : (
-                <>
-                  <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                    {form.cover ? (
-                      <img src={form.cover} alt="" className="aspect-[21/9] w-full object-cover" />
-                    ) : (
-                      <div className="grid aspect-[21/9] place-items-center px-6 text-center text-xs text-zinc-600">Нүүр хуудсын өргөн ковер. Онцлох контент дээр харагдана.</div>
-                    )}
-                  </div>
-                  <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" onFile={(file) => file && onCover(file)} />
-                </>
-              )}
-            </AdminField>
           </div>
           <div className="sm:col-span-2">
             <AdminField label="Хуваалцах линк">
@@ -1219,7 +1285,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           ) : <span />}
           <div className="flex gap-3">
             <button onClick={onClose} className="rounded-xl border border-white/10 px-5 py-3 text-xs font-bold text-zinc-400">Хаах</button>
-            <button disabled={!form.title.trim() || Boolean(busy)} onClick={async () => { const id = await saveMeta(); if (id) await onSaved(`${film ? "Контент шинэчлэгдлээ." : "Шинэ контент нэмэгдлээ."}${mailNote.current ? ` ${mailNote.current}` : ""}`); }} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black disabled:opacity-40">Хадгалах</button>
+            <button disabled={!form.title.trim() || Boolean(busy)} onClick={async () => { const id = await saveMeta(); if (!id || !(await persistImages(id))) return; await onSaved(`${film ? "Контент шинэчлэгдлээ." : "Шинэ контент нэмэгдлээ."}${mailNote.current ? ` ${mailNote.current}` : ""}`); }} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black disabled:opacity-40">Хадгалах</button>
           </div>
         </div>
       </div>

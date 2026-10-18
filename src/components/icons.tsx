@@ -55,8 +55,8 @@ export function Logo({ onClick, href = "/", header = false }: { onClick?: () => 
   );
 }
 
-export function Modal({ children, onClose, wide = false, priority = false, size }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "xl" }) {
-  const width = size === "xl" ? "max-w-6xl" : wide ? "max-w-3xl" : "max-w-md";
+export function Modal({ children, onClose, wide = false, priority = false, size }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "lg" | "xl" }) {
+  const width = size === "xl" ? "max-w-6xl" : size === "lg" ? "max-w-4xl" : wide ? "max-w-3xl" : "max-w-md";
   const { backdropRef, panelRef, requestClose } = useOverlayMotion(onClose);
   const layer = priority ? "z-[80]" : "z-[70]";
   return (
@@ -131,6 +131,105 @@ export function FilePicker({
           onFile(file);
         }}
       />
+    </div>
+  );
+}
+
+const imageTypes = ["image/jpeg", "image/png", "image/webp"];
+
+export function ImageDrop({
+  label,
+  badge,
+  hint,
+  src,
+  ratio,
+  wide = false,
+  onFile,
+}: {
+  label: string;
+  badge?: string;
+  hint: string;
+  src?: string;
+  ratio: string;
+  wide?: boolean;
+  onFile: (file: File) => void;
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [over, setOver] = useState(false);
+  const [reject, setReject] = useState("");
+  const take = (file: File | null | undefined) => {
+    if (!file) return;
+    if (!imageTypes.includes(file.type)) {
+      setReject("JPG, PNG эсвэл WEBP зураг оруулна уу.");
+      return;
+    }
+    setReject("");
+    onFile(file);
+  };
+
+  return (
+    <div className="min-w-0">
+      <button
+        type="button"
+        aria-label={`${label} оруулах`}
+        onClick={() => inputRef.current?.click()}
+        onDragEnter={(event) => {
+          event.preventDefault();
+          setOver(true);
+        }}
+        onDragOver={(event) => {
+          event.preventDefault();
+          setOver(true);
+        }}
+        onDragLeave={(event) => {
+          if (event.currentTarget.contains(event.relatedTarget as Node)) return;
+          setOver(false);
+        }}
+        onDrop={(event) => {
+          event.preventDefault();
+          setOver(false);
+          take(event.dataTransfer.files?.[0]);
+        }}
+        className={`group relative block w-full overflow-hidden rounded-2xl border text-left transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#ff536a] ${over ? "border-[#ff536a] bg-[#ff536a]/10" : src ? "border-white/15 bg-black" : "border-dashed border-white/20 bg-white/[0.03] hover:border-white/40 hover:bg-white/[0.05]"}`}
+      >
+        <div className={`relative ${ratio} w-full`}>
+          {src ? <img src={src} alt="" className="absolute inset-0 h-full w-full object-cover" /> : (
+            <div className={`absolute inset-0 flex ${wide ? "items-center gap-4 px-5 text-left" : "flex-col items-center justify-center px-3 text-center"}`}>
+              <span className="grid h-11 w-11 shrink-0 place-items-center rounded-2xl bg-white text-black">
+                <Icon name="camera" className="h-5 w-5" />
+              </span>
+              <span className="min-w-0">
+                <span className="block text-sm font-black text-white">{label}</span>
+                <span className="mt-1 block text-[11px] leading-4 text-zinc-500">{hint}</span>
+              </span>
+            </div>
+          )}
+          {src && !over && (
+            <>
+              <span className="absolute left-3 top-3 max-w-[calc(100%-1.5rem)] truncate rounded-full bg-black/70 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.12em] text-white backdrop-blur-md">
+                {badge || label}
+              </span>
+              <span className="absolute bottom-3 right-3 rounded-full bg-white px-3 py-1.5 text-[11px] font-extrabold text-black shadow-lg">Солих</span>
+            </>
+          )}
+          {over && (
+            <span className="absolute inset-0 grid place-items-center bg-black/55 px-3">
+              <span className="rounded-full bg-white px-3 py-1.5 text-xs font-extrabold text-black">Энд тавина уу</span>
+            </span>
+          )}
+        </div>
+      </button>
+      <input
+        ref={inputRef}
+        type="file"
+        accept={imageTypes.join(",")}
+        className="sr-only"
+        onChange={(event) => {
+          take(event.target.files?.[0]);
+          event.target.value = "";
+        }}
+      />
+      {reject && <p className="mt-2 text-[11px] font-bold text-red-400">{reject}</p>}
     </div>
   );
 }

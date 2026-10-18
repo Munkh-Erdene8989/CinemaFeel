@@ -5,7 +5,7 @@ import CustomYouTubePlayer, { parseSrt } from "../../ExampleVD/CustomYouTubePlay
 import { isMature } from "@/lib/mature";
 import { parseYouTubeUrl } from "@/lib/youtube";
 import type { SeriesWithEpisodes } from "@/lib/types";
-import { AdminField, FilePicker, Modal } from "./icons";
+import { AdminField, FilePicker, ImageDrop, Modal } from "./icons";
 
 async function adminFetch<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -187,7 +187,37 @@ export function YoutubeEpisodeForm({
       <div className="max-h-[88vh] overflow-y-auto p-7 md:p-9">
         <p className="text-xs font-black uppercase tracking-[.18em] text-[#ff536a]">YouTube</p>
         <h2 className="mt-2 text-2xl font-black">YouTube-оос анги нэмэх</h2>
-        <p className="mt-2 text-sm text-zinc-500">Линк болон SRT-ээ оруулахад хадмал видеоны цагтай зэрэгцэн харагдана.</p>
+        <p className="mt-2 text-sm text-zinc-500">Эхлээд ковер, thumbnail-ээ оруулаад дараа нь линк болон хадмалаа нэмнэ.</p>
+        <section className="mt-6 rounded-3xl border border-white/[.08] bg-black/25 p-4 sm:p-5">
+          <div className="flex flex-wrap items-end justify-between gap-2">
+            <div>
+              <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-400">Зураг</p>
+              <p className="mt-1 text-xs text-zinc-500">Дарж сонгох, эсвэл зургаа чирж оруулна.</p>
+            </div>
+            <p className="text-[11px] font-bold text-zinc-600">Ковер 21:9 · Thumbnail 2:3</p>
+          </div>
+          <div className="mt-4 grid items-stretch gap-4 sm:grid-cols-[minmax(0,1fr)_10.5rem]">
+            <div>
+              {mature ? (
+                <div className="flex h-full min-h-36 flex-col justify-end rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+                  <p className="text-sm font-black">Вэбсайт ковер</p>
+                  <p className="mt-2 max-w-md text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй.</p>
+                </div>
+              ) : (
+                <ImageDrop wide badge="Ковер" label="Вэбсайт ковер" hint="Нүүр хуудсанд харагдах өргөн зураг" src={coverSrc} ratio="aspect-[21/9]" onFile={setCoverFile} />
+              )}
+            </div>
+            <div className="mx-auto w-36 sm:mx-0 sm:w-auto">
+              <ImageDrop badge="Thumbnail" label="Киноны thumbnail" hint="Карт дээр харагдана" src={posterSrc} ratio="aspect-[2/3]" onFile={setPosterFile} />
+            </div>
+          </div>
+          {(posterFile || (coverFile && !mature)) && (
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+              {coverFile && !mature && <button type="button" onClick={() => setCoverFile(null)} className="font-bold text-zinc-500 hover:text-white">Ковер болих</button>}
+              {posterFile && <button type="button" onClick={() => setPosterFile(null)} className="font-bold text-zinc-500 hover:text-white">Thumbnail болих</button>}
+            </div>
+          )}
+        </section>
         <div className="mt-7 grid items-start gap-8 lg:grid-cols-2">
           <div className="grid gap-5">
             <AdminField label="Контент">
@@ -233,34 +263,6 @@ export function YoutubeEpisodeForm({
                 </div>
               </>
             )}
-            <div className="grid gap-5 sm:grid-cols-2">
-              <AdminField label="Постер зураг">
-                <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                  {posterSrc ? (
-                    <img src={posterSrc} alt="" className="aspect-[2/3] w-full object-cover" />
-                  ) : (
-                    <div className="grid aspect-[2/3] place-items-center px-4 text-center text-xs text-zinc-600">Босоо постер. Карт дээр харагдана.</div>
-                  )}
-                </div>
-                <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Зураг сонгох" emptyLabel="Зураг сонгоогүй" fileName={posterFile?.name ?? ""} onFile={setPosterFile} />
-              </AdminField>
-              <AdminField label="Вэбсайт ковер">
-                {mature ? (
-                  <p className="rounded-xl border border-white/10 px-4 py-3 text-xs leading-5 text-zinc-500">+18 контент нүүрний ковер дээр гарахгүй.</p>
-                ) : (
-                  <>
-                    <div className="overflow-hidden rounded-xl border border-white/10 bg-black/40">
-                      {coverSrc ? (
-                        <img src={coverSrc} alt="" className="aspect-[21/9] w-full object-cover" />
-                      ) : (
-                        <div className="grid aspect-[21/9] place-items-center px-4 text-center text-xs text-zinc-600">Өргөн ковер. Нүүр хуудсанд харагдана.</div>
-                      )}
-                    </div>
-                    <FilePicker accept="image/jpeg,image/png,image/webp" buttonLabel="Ковер сонгох" emptyLabel="Ковер сонгоогүй" fileName={coverFile?.name ?? ""} onFile={setCoverFile} />
-                  </>
-                )}
-              </AdminField>
-            </div>
             <AdminField label="Ангийн нэр">
               <input value={episodeTitle} onChange={(event) => setEpisodeTitle(event.target.value)} className="admin-input" placeholder={`${nextNumber}-р анги`} />
             </AdminField>
