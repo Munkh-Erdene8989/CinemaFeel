@@ -27,6 +27,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const film = series.find((item) => item.id === seriesId) ?? null;
   const matureLocked = Boolean(film && isMature(film) && allowed !== true);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
+  const [episodesReady, setEpisodesReady] = useState(false);
   const [url, setUrl] = useState("");
   const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleText: string; subtitleOffsetMs: number } | null>(null);
   const [error, setError] = useState("");
@@ -45,14 +46,23 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   }, [seriesId]);
 
   useEffect(() => {
-    if (!firebaseConfigured()) return;
+    if (!firebaseConfigured()) {
+      setEpisodesReady(true);
+      return;
+    }
     let ignore = false;
+    setEpisodesReady(false);
     getDocs(collection(clientDb(), "series", seriesId, "episodes")).then((snap) => {
       if (ignore) return;
       const list = snap.docs
         .map((item) => ({ id: item.id, ...(item.data() as Omit<Episode, "id">) }))
         .sort((a, b) => a.number - b.number);
       setEpisodes(list);
+      setEpisodesReady(true);
+    }).catch(() => {
+      if (ignore) return;
+      setEpisodes([]);
+      setEpisodesReady(true);
     });
     return () => {
       ignore = true;
@@ -62,8 +72,16 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const current = episodes.find((item) => item.number === episodeNumber) ?? episodes[0];
 
   useEffect(() => {
-    if (matureLocked) return;
-    if (!current?.id) return;
+    if (!episodesReady || matureLocked) return;
+    if (!current?.id) {
+      setLoading(false);
+      setUrl("");
+      setYoutube(null);
+      setNeedsAuth(false);
+      setNeedsPay(false);
+      setError("Энэ киноны видео оруулаагүй байна.");
+      return;
+    }
     if (!current.storagePath && current.source !== "youtube") {
       setLoading(false);
       setUrl("");
@@ -144,7 +162,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     return () => {
       ignore = true;
     };
-  }, [user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed, matureLocked]);
+  }, [episodesReady, user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed, matureLocked]);
 
   useEffect(() => {
     paywallRetry.current = false;
@@ -220,6 +238,10 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
                 playsInline
                 className="h-full w-full object-contain"
                 onContextMenu={(event) => event.preventDefault()}
+                onError={() => {
+                  setUrl("");
+                  setError("Видео нээгдсэнгүй. Файл тоглуулахад бэлэн биш байна.");
+                }}
                 onTimeUpdate={(event) => {
                   const seconds = Math.floor(event.currentTarget.currentTime);
                   if (seconds > 0 && seconds % 5 === 0) saveProgress(seconds);

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { playableMp4 } from "@/lib/mp4-faststart";
 import type { Lesson } from "@/lib/types";
 import { AdminField, FilePicker, Icon, Modal } from "./icons";
 
@@ -39,7 +40,7 @@ async function uploadLessonFile(file: File, kind: "video" | "poster", lessonId: 
   const put = await fetch(created.uploadUrl, {
     method: "PUT",
     headers: { "Content-Type": contentType },
-    body: file,
+    body: kind === "video" ? await playableMp4(file) : file,
   });
   if (!put.ok) throw new Error("Файл Firebase руу хуулагдаж чадсангүй.");
   return created.storagePath;

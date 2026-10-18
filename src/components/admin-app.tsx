@@ -7,6 +7,7 @@ import { CREATOR_FEE, defaultSettings } from "@/lib/types";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
+import { playableMp4 } from "@/lib/mp4-faststart";
 import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
@@ -87,6 +88,7 @@ async function copyText(value: string) {
 
 async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", seriesId: string, onProgress?: (percent: number) => void) {
   const contentType = file.type || "application/octet-stream";
+  const body = kind === "video" ? await playableMp4(file) : file;
   const created = await adminFetch<{ uploadUrl: string; storagePath: string }>("/api/admin/upload-url", {
     method: "POST",
     body: JSON.stringify({ kind, seriesId, contentType, fileName: file.name }),
@@ -108,7 +110,7 @@ async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", s
       reject(new Error("Файл Firebase руу хуулагдаж чадсангүй."));
     };
     xhr.onerror = () => reject(new Error("Файл Firebase руу хуулагдаж чадсангүй."));
-    xhr.send(file);
+    xhr.send(body);
   });
   return created.storagePath;
 }
