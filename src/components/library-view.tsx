@@ -21,7 +21,7 @@ export function LibraryView() {
       </div>
       {ready ? (
         <>
-          <div className="mt-10 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 md:gap-x-5">
+          <div className="mt-10 grid grid-cols-3 gap-x-2 gap-y-6 sm:gap-x-3 md:grid-cols-4 lg:grid-cols-6 md:gap-x-5">
             {available.map((film, index) => (
               <FilmCard key={film.id} film={film} owned={alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
             ))}

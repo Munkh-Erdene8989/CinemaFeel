@@ -303,8 +303,8 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               )}
               {user ? (
                 <>
-                  <a data-chrome="action" href="/account" className="grid h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
-                  <button data-chrome="action" onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white sm:block">Гарах</button>
+                  <a data-chrome="action" href="/account" className="hidden h-10 w-10 place-items-center rounded-full bg-white text-xs font-black text-black md:grid">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</a>
+                  <button data-chrome="action" onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white md:block">Гарах</button>
                 </>
               ) : (
                 <button data-chrome="action" onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold sm:px-4">

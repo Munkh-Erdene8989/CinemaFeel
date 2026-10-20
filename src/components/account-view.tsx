@@ -2,10 +2,11 @@
 
 import { WEEKLY_PRICE } from "@/lib/types";
 import { accountIdentity, accountInitial, formatDate, formatMoney } from "@/lib/format";
+import { Icon } from "./icons";
 import { useSite } from "./site-provider";
 
 export function AccountView() {
-  const { user, profile, subscribed, owned, payments, beginCheckout, openAuth } = useSite();
+  const { user, profile, subscribed, owned, payments, beginCheckout, openAuth, logout } = useSite();
   if (!user) {
     return (
       <section className="mx-auto grid min-h-screen max-w-xl place-items-center px-5 pt-24 text-center">
@@ -19,12 +20,18 @@ export function AccountView() {
   const identity = accountIdentity(profile?.email || user.email, profile?.phone || user.phoneNumber);
   return (
     <section className="mx-auto min-h-screen max-w-5xl px-5 pb-24 pt-32 md:px-10">
-      <div data-rise className="flex items-center gap-5">
-        <span className="grid h-16 w-16 place-items-center rounded-full bg-white text-xl font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</span>
-        <div>
-          <h1 className="text-2xl font-black">Миний бүртгэл</h1>
-          <p className="mt-1 text-sm text-zinc-500">{identity || "CinemaFeel"}</p>
+      <div data-rise className="flex flex-col gap-5 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-center gap-5">
+          <span className="grid h-16 w-16 shrink-0 place-items-center rounded-full bg-white text-xl font-black text-black">{accountInitial(profile?.email || user.email, profile?.phone || user.phoneNumber)}</span>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-black">Миний бүртгэл</h1>
+            <p className="mt-1 truncate text-sm text-zinc-500">{identity || "CinemaFeel"}</p>
+          </div>
         </div>
+        <button onClick={logout} className="flex h-10 w-fit shrink-0 items-center gap-2 rounded-full border border-white/10 px-4 text-xs font-bold text-zinc-300 hover:border-white/25 hover:text-white sm:ml-auto">
+          <Icon name="logout" className="h-4 w-4" />
+          Гарах
+        </button>
       </div>
       <div className="mt-10 grid gap-5 md:grid-cols-3">
         <div data-rise data-delay="0.05" className="rounded-2xl border border-white/10 bg-white/[.03] p-6">

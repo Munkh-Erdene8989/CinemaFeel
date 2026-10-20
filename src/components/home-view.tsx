@@ -151,7 +151,7 @@ export function HomeView() {
             </button>
           ))}
         </div>
-        <div ref={gridRef} className="mt-6 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5 lg:grid-cols-6">
+        <div ref={gridRef} className="mt-6 grid grid-cols-3 gap-x-2 gap-y-6 sm:gap-x-3 md:gap-x-5 lg:grid-cols-6">
           {visible.map((film, index) => (
             <FilmCard key={film.id} film={film} owned={alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
           ))}

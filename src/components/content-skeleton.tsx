@@ -41,7 +41,7 @@ export function CatalogSkeleton() {
 
 export function FilmGridSkeleton({ count = 12 }: { count?: number }) {
   return (
-    <div className="mt-6 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5 lg:grid-cols-6" aria-hidden="true">
+    <div className="mt-6 grid grid-cols-3 gap-x-2 gap-y-6 sm:gap-x-3 md:gap-x-5 lg:grid-cols-6" aria-hidden="true">
       {Array.from({ length: count }, (_, index) => (
         <div key={index}>
           <Bone className="aspect-[3/4.1] w-full rounded-2xl" />
