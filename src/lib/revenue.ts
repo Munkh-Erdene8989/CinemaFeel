@@ -167,6 +167,16 @@ export function revenueForWindow(series: Series[], payments: Payment[], staff: R
   );
 }
 
+export function revenueBetween(series: Series[], payments: Payment[], staff: RevenueParty[], start: number, end: number) {
+  const { names, invitedBy } = revenueParties(staff);
+  return buildRevenue(
+    series,
+    payments.filter((payment) => payment.createdAt >= start && payment.createdAt < end),
+    names,
+    invitedBy,
+  );
+}
+
 export function scopedRevenue(report: RevenueReport, viewer: { role: string; adminId: string; name: string }): RevenueReport {
   if (viewer.role === "super") return report;
   const mine = report.admins.find((item) => item.adminId === viewer.adminId) ?? emptyAdmin(viewer.adminId, viewer.name);

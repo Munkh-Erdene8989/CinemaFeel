@@ -1,6 +1,6 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { CREATOR_FEE, defaultSettings } from "@/lib/types";
@@ -9,6 +9,7 @@ import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
 import { playableMp4 } from "@/lib/mp4-faststart";
 import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
+import type { SalaryLine, SalaryReport } from "@/lib/salary";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
 import { KnowledgeAdmin } from "./knowledge-admin";
@@ -135,6 +136,8 @@ export function AdminApp() {
   const [usersReady, setUsersReady] = useState(false);
   const [paymentsReady, setPaymentsReady] = useState(false);
   const [lessonsReady, setLessonsReady] = useState(false);
+  const [salary, setSalary] = useState<SalaryReport | null>(null);
+  const [salaryReady, setSalaryReady] = useState(false);
   const usersFull = useRef(false);
   const paymentsFull = useRef(false);
   const lessonsFull = useRef(false);
@@ -150,8 +153,8 @@ export function AdminApp() {
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
-    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"]];
+    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Цалин", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
+    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Цалин", "card"]];
 
   const notify = (message: string) => {
     setNotice(message);
@@ -314,6 +317,25 @@ export function AdminApp() {
     }
   }, [ready, section, session?.role]);
 
+  useEffect(() => {
+    if (!ready || section !== "Цалин") return;
+    let ignore = false;
+    adminFetch<SalaryReport>("/api/admin/salary")
+      .then((data) => {
+        if (ignore) return;
+        setSalary(data);
+        setSalaryReady(true);
+      })
+      .catch((error: Error) => {
+        if (ignore) return;
+        setSalaryReady(true);
+        notify(error.message);
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [ready, section]);
+
   const guiding = guideOpen && !termsOpen;
   const [pageSize, setPageSizeState] = useState<AdminPageSize>(20);
   useEffect(() => setPageSizeState(readAdminPageSize()), []);
@@ -371,6 +393,16 @@ export function AdminApp() {
           {section === "Мэдлэг" && lessonsReady && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
           {section === "Мэдлэг" && !lessonsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
+          {section === "Цалин" && salaryReady && salary && <SalaryAdmin report={salary} manage={superAdmin} notify={notify} onUpdated={(adminId, cycleId, paid, paidAt) => {
+            setSalary((current) => current && ({
+              creators: current.creators.map((creator) => creator.adminId === adminId ? {
+                ...creator,
+                lines: creator.lines.map((line) => line.id === cycleId ? { ...line, paid, paidAt, status: paid ? "Олгосон" : "Хүлээгдэж буй" } : line),
+              } : creator),
+            }));
+          }} />}
+          {section === "Цалин" && salaryReady && !salary && <p className="text-sm text-zinc-500">Цалин ачааллаагүй.</p>}
+          {section === "Цалин" && !salaryReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Хэрэглэгчид" && superAdmin && usersReady && paymentsReady && <UsersAdmin users={users} payments={payments} content={content} onUsers={setUsers} notify={notify} />}
           {section === "Хэрэглэгчид" && superAdmin && (!usersReady || !paymentsReady) && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
           {section === "Хөнгөлөлт" && superAdmin && <DiscountsAdmin notify={notify} />}
@@ -1989,6 +2021,162 @@ function SettingsAdmin({ settings, onSaved, notify }: { settings: Settings; onSa
         <PageSizeSetting />
         <button onClick={save} className="rounded-xl bg-white px-5 py-3 text-xs font-extrabold text-black">Өөрчлөлт хадгалах</button>
       </div>
+    </div>
+  );
+}
+
+function SalaryStatusButton({ line, busy, onClick }: { line: SalaryLine; busy: boolean; onClick: () => void }) {
+  return (
+    <button disabled={busy} onClick={onClick} className={`rounded-full px-3 py-1.5 text-[11px] font-bold disabled:opacity-50 ${line.paid ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-300"}`}>
+      {busy ? "Хадгалж байна..." : line.status}
+    </button>
+  );
+}
+
+function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryReport; manage: boolean; notify: (message: string) => void; onUpdated: (adminId: string, cycleId: string, paid: boolean, paidAt: number) => void }) {
+  const [busyKey, setBusyKey] = useState("");
+  const [openId, setOpenId] = useState<string | null>(null);
+  const list = usePaged(report.creators, "salary");
+  const toggle = async (adminId: string, line: SalaryLine) => {
+    const key = `${adminId}_${line.id}`;
+    setBusyKey(key);
+    try {
+      const saved = await adminFetch<{ paid: boolean; paidAt: number }>("/api/admin/salary", {
+        method: "POST",
+        body: JSON.stringify({ adminId, cycleId: line.id, paid: !line.paid }),
+      });
+      onUpdated(adminId, line.id, saved.paid, saved.paidAt);
+      notify(saved.paid ? "Цалин олгосонд тэмдэглэлээ." : "Цалин хүлээгдэж буй боллоо.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Цалингийн төлөв солигдсонгүй.");
+    } finally {
+      setBusyKey("");
+    }
+  };
+  if (!manage) {
+    const mine = report.creators[0];
+    const current = mine?.lines[0];
+    const history = mine?.lines.slice(1) ?? [];
+    return (
+      <div>
+        <h2 className="text-2xl font-black">Цалин</h2>
+        <p className="mt-1 max-w-3xl text-sm text-zinc-600">Тухайн циклийн орлого. Сар бүрийн 15 болон 30-нд олгоно. 16 болон дараа сарын 1-нд шинэ цикл ₮0-оос эхэлнэ. Төлөв super admin олгосон гэж тэмдэглэсний дараа солигдоно.</p>
+        {!current && <p className="mt-8 text-sm text-zinc-500">Цалингийн цикл алга.</p>}
+        {current && (
+          <>
+            <div className="mt-5 rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+              <div className="flex flex-wrap items-start justify-between gap-4">
+                <div>
+                  <p className="text-xs font-bold text-zinc-500">{current.label}</p>
+                  <p className="mt-3 text-4xl font-black">{formatMoney(current.total)}</p>
+                  <p className="mt-2 text-xs text-zinc-600">Олголт: {current.payoutLabel}</p>
+                </div>
+                <span className={`rounded-full px-3 py-1.5 text-xs font-bold ${current.paid ? "bg-emerald-500/15 text-emerald-400" : "bg-amber-500/15 text-amber-300"}`}>{current.status}</span>
+              </div>
+            </div>
+            <div className="mt-4 grid gap-4 sm:grid-cols-3">
+              <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+                <p className="text-xs font-bold text-zinc-500">Шууд борлуулалт</p>
+                <p className="mt-3 text-2xl font-black">{formatMoney(current.direct)}</p>
+                <p className="mt-2 text-xs text-zinc-600">борлуулалтын 80%</p>
+              </div>
+              <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+                <p className="text-xs font-bold text-zinc-500">Сарын эрхийн хувь</p>
+                <p className="mt-3 text-2xl font-black">{formatMoney(current.subscriptionShare)}</p>
+                <p className="mt-2 text-xs text-zinc-600">үзэлтийн хувиар</p>
+              </div>
+              <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+                <p className="text-xs font-bold text-zinc-500">Урилга</p>
+                <p className="mt-3 text-2xl font-black">{formatMoney(current.referral)}</p>
+                <p className="mt-2 text-xs text-zinc-600">урьсан бүтээгчийн борлуулалтын 10%</p>
+              </div>
+            </div>
+            <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
+              <table className="w-full min-w-[720px] text-left text-xs">
+                <thead className="border-b border-white/[.07] text-zinc-600">
+                  <tr>{["ЦИКЛ", "ОЛГОЛТ", "ШУУД", "САРЫН ЭРХ", "УРИЛГА", "НИЙТ", "ТӨЛӨВ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+                </thead>
+                <tbody>
+                  {history.map((line) => (
+                    <tr key={line.id} className="border-b border-white/[.05] last:border-0">
+                      <td className="px-5 py-4 font-bold">{line.label}</td>
+                      <td className="px-5 text-zinc-400">{line.payoutLabel}</td>
+                      <td className="px-5">{formatMoney(line.direct)}</td>
+                      <td className="px-5">{formatMoney(line.subscriptionShare)}</td>
+                      <td className="px-5">{formatMoney(line.referral)}</td>
+                      <td className="px-5 font-bold">{formatMoney(line.total)}</td>
+                      <td className={`px-5 font-bold ${line.paid ? "text-emerald-400" : "text-amber-300"}`}>{line.status}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+              {!history.length && <p className="py-10 text-center text-sm text-zinc-600">Өмнөх цикл алга.</p>}
+            </div>
+          </>
+        )}
+      </div>
+    );
+  }
+  return (
+    <div>
+      <h2 className="text-2xl font-black">Цалин</h2>
+      <p className="mt-1 max-w-3xl text-sm text-zinc-600">Бүтээгч бүрийн одоогийн цикл болон сүүлд хаагдсан циклийн дүн. Төлөв дээр дарж олгосон эсвэл хүлээгдэж буй болгоно. Хуучин циклийг мөрөө дэлгээд тэмдэглэнэ.</p>
+      <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
+        <table className="w-full min-w-[980px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600">
+            <tr>{["БҮТЭЭГЧ", "ДАНС", "ОДООГИЙН ДҮН", "ХААГДСАН ДҮН", "ТӨЛӨВ", "ХУУЧИН"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr>
+          </thead>
+          <tbody>
+            {list.rows.map((creator) => {
+              const current = creator.lines[0];
+              const closed = creator.lines[1];
+              const older = creator.lines.slice(2);
+              const open = openId === creator.adminId;
+              return (
+                <Fragment key={creator.adminId}>
+                  <tr className="border-b border-white/[.05]">
+                    <td className="px-5 py-4 font-bold">{creator.name}{creator.username && <small className="mt-1 block font-medium text-zinc-600">@{creator.username}</small>}</td>
+                    <td className="px-5 text-zinc-400">{creator.bankAccount ? <><span className="font-bold tracking-wide text-zinc-200">{creator.bankAccount}</span>{creator.bankName && <small className="block text-zinc-600">{creator.bankName}</small>}</> : "—"}</td>
+                    <td className="px-5">
+                      <span className="font-bold">{current ? formatMoney(current.total) : "—"}</span>
+                      {current && <small className="mt-1 block text-zinc-600">{current.label}</small>}
+                      {current && <span className="mt-2 inline-flex"><SalaryStatusButton line={current} busy={busyKey === `${creator.adminId}_${current.id}`} onClick={() => toggle(creator.adminId, current)} /></span>}
+                    </td>
+                    <td className="px-5">
+                      <span className="font-bold">{closed ? formatMoney(closed.total) : "—"}</span>
+                      {closed && <small className="mt-1 block text-zinc-600">{closed.label}</small>}
+                    </td>
+                    <td className="px-5">{closed ? <SalaryStatusButton line={closed} busy={busyKey === `${creator.adminId}_${closed.id}`} onClick={() => toggle(creator.adminId, closed)} /> : "—"}</td>
+                    <td className="px-5">
+                      <button onClick={() => setOpenId(open ? null : creator.adminId)} className="font-bold text-zinc-400 hover:text-white">{open ? "Хаах" : "Харах"}</button>
+                    </td>
+                  </tr>
+                  {open && (
+                    <tr className="border-b border-white/[.05] bg-white/[.02]">
+                      <td colSpan={6} className="px-5 py-4">
+                        <div className="grid gap-3 md:grid-cols-2">
+                          {older.map((line) => (
+                            <div key={line.id} className="flex items-center justify-between gap-3 rounded-xl border border-white/[.06] px-4 py-3">
+                              <div>
+                                <p className="font-bold">{line.label}</p>
+                                <p className="mt-1 text-zinc-500">Олголт: {line.payoutLabel} · {formatMoney(line.total)}</p>
+                              </div>
+                              <SalaryStatusButton line={line} busy={busyKey === `${creator.adminId}_${line.id}`} onClick={() => toggle(creator.adminId, line)} />
+                            </div>
+                          ))}
+                        </div>
+                        {!older.length && <p className="text-sm text-zinc-600">Хуучин цикл алга.</p>}
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
+              );
+            })}
+          </tbody>
+        </table>
+        {!report.creators.length && <p className="py-10 text-center text-sm text-zinc-600">Контент бүтээгч алга.</p>}
+      </div>
+      <TablePager pager={list} />
     </div>
   );
 }

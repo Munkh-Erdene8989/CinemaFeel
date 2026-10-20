@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { revenueForWindow, scopedRevenue } from "./revenue.ts";
+import { revenueBetween, revenueForWindow, scopedRevenue } from "./revenue.ts";
 import type { Payment, Series } from "./types.ts";
 
 function series(partial: Pick<Series, "id" | "ownerId" | "uniqueViews"> & Partial<Series>): Series {
@@ -56,6 +56,23 @@ test("a weekly payment joins the subscription pool, and an old payment stays out
   );
   assert.equal(report.subscriptionGross, 5900);
   assert.equal(report.rows[0]?.gross, 0);
+});
+
+test("revenueBetween keeps payments inside the window and drops the end boundary", () => {
+  const films = [series({ id: "film", ownerId: "creator", uniqueViews: 10 })];
+  const report = revenueBetween(
+    films,
+    [
+      payment({ id: "in", mode: "single", amount: 1000, status: "Амжилттай", createdAt: 100, seriesId: "film" }),
+      payment({ id: "edge", mode: "single", amount: 5000, status: "Амжилттай", createdAt: 200, seriesId: "film" }),
+      payment({ id: "before", mode: "single", amount: 9000, status: "Амжилттай", createdAt: 99, seriesId: "film" }),
+    ],
+    [{ id: "creator", name: "Ada" }],
+    100,
+    200,
+  );
+  assert.equal(report.rows[0]?.gross, 1000);
+  assert.equal(report.admins[0]?.direct, 800);
 });
 
 test("a creator report keeps that creator's rows and hides the platform totals", () => {
