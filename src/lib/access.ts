@@ -1,5 +1,5 @@
-import { FieldValue, type Firestore } from "firebase-admin/firestore";
-import { grantPass, isSubscriptionCheckout } from "./entitlement";
+import { FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
+import { contactsMatch, creatorMayWatchOwn, grantPass, isSubscriptionCheckout } from "./entitlement";
 import type { AppUser, Payment, Series } from "./types";
 import { subscriptionActive, todayStamp } from "./format";
 
@@ -11,8 +11,53 @@ export async function userCanWatch(db: Firestore, uid: string, series: Series) {
   if (user?.status === "Түр зогссон") return false;
   if (series.access === "free") return true;
   if (subscriptionActive(user)) return true;
+  if (user && series.ownerId && (await viewerOwnsCreatorCatalog(db, user, series.ownerId))) return true;
   const owned = await db.collection("purchases").where("uid", "==", uid).get();
   return owned.docs.some((item) => item.data().seriesId === series.id);
+}
+
+export async function findLiveCreatorId(db: Firestore, contact: { email?: string; phone?: string }) {
+  const email = contact.email?.trim().toLowerCase() ?? "";
+  const phone = contact.phone?.trim() ?? "";
+  if (email) {
+    const snap = await db.collection("admins").where("email", "==", email).limit(5).get();
+    const match = snap.docs.find((item) => creatorMayWatchOwn(item.data()));
+    if (match) return match.id;
+  }
+  if (phone) {
+    const snap = await db.collection("admins").where("phone", "==", phone).limit(5).get();
+    const match = snap.docs.find((item) => creatorMayWatchOwn(item.data()));
+    if (match) return match.id;
+  }
+  return "";
+}
+
+async function viewerOwnsCreatorCatalog(db: Firestore, user: Pick<AppUser, "email" | "phone">, ownerId: string) {
+  const admin = await db.collection("admins").doc(ownerId).get();
+  if (!creatorMayWatchOwn(admin.data())) return false;
+  return contactsMatch(user, { email: String(admin.data()?.email ?? ""), phone: String(admin.data()?.phone ?? "") });
+}
+
+export async function attachCreatorViewers(db: Firestore, creatorId: string) {
+  const admin = await db.collection("admins").doc(creatorId).get();
+  if (!creatorMayWatchOwn(admin.data())) return;
+  const email = String(admin.data()?.email ?? "").trim().toLowerCase();
+  const phone = String(admin.data()?.phone ?? "").trim();
+  const refs = new Map<string, DocumentReference>();
+  if (email) {
+    const snap = await db.collection("users").where("email", "==", email).get();
+    snap.docs.forEach((item) => refs.set(item.id, item.ref));
+  }
+  if (phone) {
+    const snap = await db.collection("users").where("phone", "==", phone).get();
+    snap.docs.forEach((item) => refs.set(item.id, item.ref));
+  }
+  await Promise.all([...refs.values()].map((ref) => ref.set({ creatorId }, { merge: true })));
+}
+
+export async function detachCreatorViewers(db: Firestore, creatorId: string) {
+  const snap = await db.collection("users").where("creatorId", "==", creatorId).get();
+  await Promise.all(snap.docs.map((item) => item.ref.set({ creatorId: "" }, { merge: true })));
 }
 
 export async function grantPayment(db: Firestore, paymentId: string, qpayPaymentId: string) {
@@ -26,6 +71,7 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
   if (payment.mode === "creator") {
     if (!payment.creatorId) return { ok: false as const, error: "Контент бүтээгч олдсонгүй." };
     await db.collection("admins").doc(payment.creatorId).set({ active: true, paid: true, paidAt: Date.now() }, { merge: true });
+    await attachCreatorViewers(db, payment.creatorId);
     await ref.set({ status: "Амжилттай", paymentId: qpayPaymentId, date: todayStamp() }, { merge: true });
     return { ok: true as const, already: false };
   }

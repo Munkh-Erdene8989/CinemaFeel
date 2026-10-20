@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
 import { isMature } from "@/lib/mature";
+import { alreadyEntitled } from "@/lib/entitlement";
 import { retrySubscribedPaywall } from "@/lib/playback";
 import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
@@ -22,7 +23,7 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 
 export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
   const router = useRouter();
-  const { series, user, profile, subscribed, openAuth, openFilm, beginCheckout, ready, homeHref } = useSite();
+  const { series, user, profile, owned, subscribed, openAuth, openFilm, beginCheckout, ready, homeHref } = useSite();
   const { allowed, allow } = useMatureConsent();
   const film = series.find((item) => item.id === seriesId) ?? null;
   const matureLocked = Boolean(film && isMature(film) && allowed !== true);
@@ -40,6 +41,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const loadingRef = useRef<HTMLParagraphElement>(null);
   const paywallRetry = useRef(false);
   const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
+  const entitled = film ? alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId }) : subscribed;
 
   useEffect(() => {
     setAskEmail(true);
@@ -126,7 +128,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
       }
       if (data.code === "paywall") {
         setNeedsPay(true);
-        if (retrySubscribedPaywall(data.code, subscribed, paywallRetry.current)) {
+        if (retrySubscribedPaywall(data.code, entitled, paywallRetry.current)) {
           paywallRetry.current = true;
           loadedFor.current = "";
           setPlaybackKey((value) => value + 1);
@@ -162,7 +164,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     return () => {
       ignore = true;
     };
-  }, [episodesReady, user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, subscribed, matureLocked]);
+  }, [episodesReady, user?.uid, current?.id, current?.storagePath, current?.source, seriesId, playbackKey, entitled, matureLocked]);
 
   useEffect(() => {
     paywallRetry.current = false;
@@ -251,14 +253,14 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
                 {film?.image && !loading && <img src={film.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
                 <div className="relative">
-                  {loading ? <p ref={loadingRef}>Ачааллаж байна...</p> : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !subscribed ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
+                  {loading ? <p ref={loadingRef}>Ачааллаж байна...</p> : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !entitled ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
                   {needsAuth && (
                     <button onClick={openAuth} className="mt-4 flex h-11 items-center gap-2 rounded-full bg-white px-5 text-xs font-extrabold text-black">
                       <Icon name="play" className="h-4 w-4" fill />
                       Нэвтэрч үзэх
                     </button>
                   )}
-                  {needsPay && !subscribed && film && (
+                  {needsPay && !entitled && film && (
                     <div className="mt-4 grid gap-2">
                       <button onClick={() => beginCheckout("subscription", film)} className="h-11 rounded-full border border-white/20 px-5 text-xs font-extrabold">Сарын эрх авах</button>
                       <button onClick={() => beginCheckout("weekly", film)} className="offer-glow h-11 rounded-full bg-[#ff3d56] px-5 text-xs font-extrabold">7 хоног · {formatMoney(WEEKLY_PRICE)}</button>

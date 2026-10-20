@@ -43,3 +43,28 @@ export function extendPass(currentExpiresAt: number, now = Date.now()) {
 export function clearPass() {
   return { subscriptionExpiresAt: 0 };
 }
+
+export function creatorMayWatchOwn(admin: { active?: boolean; paid?: boolean; source?: string } | null | undefined) {
+  if (!admin || admin.active === false) return false;
+  return admin.source === "self" ? admin.paid === true : true;
+}
+
+export function contactsMatch(
+  left: { email?: string | null; phone?: string | null } | null | undefined,
+  right: { email?: string | null; phone?: string | null } | null | undefined,
+) {
+  const email = String(left?.email ?? "").trim().toLowerCase();
+  const otherEmail = String(right?.email ?? "").trim().toLowerCase();
+  if (email && otherEmail && email === otherEmail) return true;
+  const phone = String(left?.phone ?? "").trim();
+  const otherPhone = String(right?.phone ?? "").trim();
+  return Boolean(phone && otherPhone && phone === otherPhone);
+}
+
+export function alreadyEntitled(
+  film: { id: string; ownerId?: string },
+  input: { ownedIds: readonly string[]; subscribed: boolean; creatorId?: string },
+) {
+  if (input.subscribed || input.ownedIds.includes(film.id)) return true;
+  return Boolean(input.creatorId && film.ownerId === input.creatorId);
+}

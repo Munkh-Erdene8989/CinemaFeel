@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { animate } from "animejs";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import { alreadyEntitled } from "@/lib/entitlement";
 import { WEEKLY_PRICE } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { creatorCatalog, creatorPath } from "@/lib/creator-site";
@@ -25,7 +26,7 @@ async function copyLink(value: string) {
 }
 
 export function CreatorView({ username }: { username: string }) {
-  const { series, owned, subscribed, openFilm, beginCheckout, settings, ready, creatorSite, creatorLookup } = useSite();
+  const { series, owned, subscribed, openFilm, beginCheckout, settings, ready, creatorSite, creatorLookup, profile } = useSite();
   const { allowed, allow } = useMatureConsent();
   const [category, setCategory] = useState("Бүгд");
   const [askMature, setAskMature] = useState(false);
@@ -44,6 +45,7 @@ export function CreatorView({ username }: { username: string }) {
   const titleAccent = titleWords.length > 1 ? titleWords[titleWords.length - 1] : "";
   const monthly = Number(settings.price || 14900);
   const hasPaid = mine.some((film) => film.access !== "free");
+  const ownsCorner = Boolean(creatorSite && profile?.creatorId === creatorSite.id);
   const name = creatorSite?.username === username ? creatorSite.name : username;
   const heroRef = useRef<HTMLElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -148,7 +150,7 @@ export function CreatorView({ username }: { username: string }) {
         </div>
       </section>
 
-      {!subscribed && hasPaid && (
+      {!subscribed && !ownsCorner && hasPaid && (
         <section data-rise data-delay="0.08" className="mx-auto -mt-7 max-w-[1312px] px-5 md:px-10">
           <div className="relative z-10 flex flex-col items-start justify-between gap-5 overflow-hidden rounded-3xl border border-[#ff536a]/20 bg-[linear-gradient(100deg,#251015,#141418)] p-6 md:flex-row md:items-center md:p-8">
             <div>
@@ -198,7 +200,7 @@ export function CreatorView({ username }: { username: string }) {
         )}
         <div ref={gridRef} className="mt-6 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5 lg:grid-cols-6">
           {visible.map((film, index) => (
-            <FilmCard key={film.id} film={film} owned={owned.includes(film.id) || subscribed} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
+            <FilmCard key={film.id} film={film} owned={alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
           ))}
         </div>
         {!visible.length && <p data-rise className="py-16 text-center text-sm text-zinc-500">{mine.length ? "Энэ ангилалд нийтлэгдсэн кино алга." : "Нийтлэгдсэн кино алга."}</p>}

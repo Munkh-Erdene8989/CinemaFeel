@@ -4,6 +4,7 @@ import { useRef, useState } from "react";
 import { animate } from "animejs";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
+import { alreadyEntitled } from "@/lib/entitlement";
 import { WEEKLY_PRICE } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { MATURE_CATEGORY, coverFilm, isMatureLabel, matureCatalog, publicCatalog, readMatureConsent } from "@/lib/mature";
@@ -15,7 +16,7 @@ import { prefersReducedMotion } from "./motion";
 import { useSite } from "./site-provider";
 
 export function HomeView() {
-  const { series, owned, subscribed, openFilm, beginCheckout, settings, ready } = useSite();
+  const { series, owned, subscribed, openFilm, beginCheckout, settings, ready, profile } = useSite();
   const { allowed, allow } = useMatureConsent();
   const [category, setCategory] = useState("Бүгд");
   const [askMature, setAskMature] = useState(false);
@@ -90,7 +91,7 @@ export function HomeView() {
                     Одоо үзэх
                   </button>
                   <span className="flex h-12 items-center rounded-full border border-white/15 bg-black/20 px-5 text-sm font-bold backdrop-blur-md">
-                    {featured.access === "free" ? "Үнэгүй" : `${formatMoney(featured.price)} · Нэг удаа`}
+                    {alreadyEntitled(featured, { ownedIds: owned, subscribed, creatorId: profile?.creatorId }) ? "Эрх нээлттэй" : featured.access === "free" ? "Үнэгүй" : `${formatMoney(featured.price)} · Нэг удаа`}
                   </span>
                 </div>
               </>
@@ -152,7 +153,7 @@ export function HomeView() {
         </div>
         <div ref={gridRef} className="mt-6 grid grid-cols-2 gap-x-3 gap-y-8 sm:grid-cols-3 md:gap-x-5 lg:grid-cols-6">
           {visible.map((film, index) => (
-            <FilmCard key={film.id} film={film} owned={owned.includes(film.id) || subscribed} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
+            <FilmCard key={film.id} film={film} owned={alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
           ))}
         </div>
         {!visible.length && <p data-rise className="py-16 text-center text-sm text-zinc-500">Энэ ангилалд нийтлэгдсэн кино алга.</p>}

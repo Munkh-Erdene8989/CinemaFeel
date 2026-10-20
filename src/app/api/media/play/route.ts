@@ -1,11 +1,10 @@
-import { NextRequest, NextResponse } from "next/server";
-import { FieldValue } from "firebase-admin/firestore";
+import { after, NextRequest, NextResponse } from "next/server";
 import { userCanWatch } from "@/lib/access";
 import { playbackDenial } from "@/lib/playback";
 import { mapSeries } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { jsonError, readUser } from "@/lib/http";
-import { recordUniqueView } from "@/lib/views";
+import { recordPlaybackView } from "@/lib/views";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
@@ -18,6 +17,7 @@ export async function POST(request: NextRequest) {
   const seriesSnap = await adminDb().collection("series").doc(body.seriesId).get();
   if (!seriesSnap.exists || seriesSnap.data()?.status !== "Нийтлэгдсэн") return jsonError("Кино олдсонгүй.", 404);
   const series = mapSeries(seriesSnap.id, seriesSnap.data()!);
+  const ownerId = String(seriesSnap.data()?.ownerId ?? "");
   const allowed = await userCanWatch(adminDb(), user.uid, series);
   const denial = playbackDenial(true, allowed);
   if (denial) return NextResponse.json({ error: denial.error, code: denial.code }, { status: denial.status });
@@ -37,9 +37,7 @@ export async function POST(request: NextRequest) {
         console.warn("SRT уншиж чадсангүй.", error);
       }
     }
-    await seriesSnap.ref.set({ views: FieldValue.increment(1) }, { merge: true });
-    await recordUniqueView(body.seriesId, user.uid, String(seriesSnap.data()?.ownerId ?? ""));
-    return NextResponse.json({
+    return finish(body.seriesId, user.uid, ownerId, {
       youtubeId,
       startAt: Number(data.startAt ?? 0),
       subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
@@ -54,7 +52,14 @@ export async function POST(request: NextRequest) {
     action: "read",
     expires: Date.now() + 2 * 60 * 60 * 1000,
   });
-  await seriesSnap.ref.set({ views: FieldValue.increment(1) }, { merge: true });
-  await recordUniqueView(body.seriesId, user.uid, String(seriesSnap.data()?.ownerId ?? ""));
-  return NextResponse.json({ url, title: episode.data()?.title || series.title });
+  return finish(body.seriesId, user.uid, ownerId, { url, title: episode.data()?.title || series.title });
+}
+
+function finish(seriesId: string, uid: string, ownerId: string, body: Record<string, unknown>) {
+  after(() =>
+    recordPlaybackView(seriesId, uid, ownerId).catch((error) => {
+      console.warn("Үзэлт бүртгэж чадсангүй.", error);
+    }),
+  );
+  return NextResponse.json(body);
 }

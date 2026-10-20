@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publishNotice } from "@/lib/publish-notice";
 import { listSeries, newId, seriesPayload, uniqueShareCode } from "@/lib/catalog";
+import { withRolledViews } from "@/lib/views";
 import { adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres } from "@/lib/genres";
 import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
@@ -8,7 +9,7 @@ import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
 export async function GET(request: NextRequest) {
   const session = await assertAdmin(request);
   if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
-  const series = await listSeries();
+  const series = await withRolledViews(await listSeries());
   const visible = session.role === "super" ? series : series.filter((item) => item.ownerId === session.adminId);
   return NextResponse.json({ series: visible });
 }
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
     shareCode,
     ownerId: session.adminId,
     ownerName: session.name,
+    views: 0,
     uniqueViews: 0,
     releaseEmail: "pending",
   });

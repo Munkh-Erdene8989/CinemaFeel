@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { detachCreatorViewers } from "@/lib/access";
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { adminDb } from "@/lib/firebase-admin";
 import { jsonError, requireSuper } from "@/lib/http";
@@ -26,6 +27,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     await adminDb().collection("users").doc(payment.uid).set(revokePass(), { merge: true });
   } else if (payment.mode === "creator" && payment.creatorId) {
     await adminDb().collection("admins").doc(payment.creatorId).set({ active: false, paid: false }, { merge: true });
+    await detachCreatorViewers(adminDb(), payment.creatorId);
   } else if (payment.seriesId) {
     const purchases = await adminDb().collection("purchases").where("uid", "==", payment.uid).get();
     await Promise.all(

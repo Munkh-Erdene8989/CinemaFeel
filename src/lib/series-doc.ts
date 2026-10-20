@@ -50,7 +50,6 @@ export function seriesWritePayload(body: SeriesRecord, createdAt = Date.now()) {
     access: seriesAccess(price),
     image: String(body.image ?? ""),
     cover: mature ? "" : String(body.cover ?? ""),
-    views: Number(body.views ?? 0),
     status: seriesStatus(body.status),
     featured: mature ? false : Boolean(body.featured),
     year: Number(body.year ?? new Date().getFullYear()),

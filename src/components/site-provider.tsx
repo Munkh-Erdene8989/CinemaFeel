@@ -9,6 +9,7 @@ import { seriesFromRecord } from "@/lib/series-doc";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
 import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
+import { alreadyEntitled } from "@/lib/entitlement";
 import { accountInitial, subscriptionActive } from "@/lib/format";
 import { AuthModal } from "./auth-modal";
 import { JoinModal } from "./join-modal";
@@ -70,6 +71,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   useChromeMotion(rootRef);
 
   const subscribed = subscriptionActive(profile);
+  const accessReady = !user || Boolean(profile);
   const monthlyPrice = Number(settings.price || 14900);
 
   const notify = (message: string) => {
@@ -189,6 +191,12 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   }, [pathname]);
 
   const beginCheckout = (mode: CheckoutMode, film?: Series | null) => {
+    const target = film ?? selected;
+    if (mode === "single" && target && alreadyEntitled(target, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })) {
+      setSelected(null);
+      router.push(`/watch/${target.id}/1`);
+      return;
+    }
     if (film) setSelected(film);
     if (!user) {
       setPending(mode);
@@ -201,6 +209,15 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     }
     setCheckout(mode);
   };
+
+  useEffect(() => {
+    if (checkout !== "single" || !selected) return;
+    if (!alreadyEntitled(selected, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })) return;
+    const film = selected;
+    setCheckout(null);
+    setSelected(null);
+    router.push(`/watch/${film.id}/1`);
+  }, [checkout, selected, owned, subscribed, profile?.creatorId, router]);
 
   const watch = (film: Series) => {
     setSelected(null);
@@ -346,9 +363,10 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             film={selected}
             monthlyPrice={monthlyPrice}
             onClose={() => setSelected(null)}
-            isOwned={owned.includes(selected.id)}
+            isOwned={alreadyEntitled(selected, { ownedIds: owned, subscribed: false, creatorId: profile?.creatorId })}
             subscribed={subscribed}
             signedIn={Boolean(user)}
+            accessReady={accessReady}
             onCheckout={(mode) => beginCheckout(mode, selected)}
             onWatch={() => watch(selected)}
           />

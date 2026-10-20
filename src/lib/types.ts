@@ -105,6 +105,7 @@ export type AppUser = {
   subscriptionExpiresAt: number | null;
   displayName: string;
   photoURL: string;
+  creatorId?: string;
 };
 
 export type Purchase = {

@@ -72,6 +72,12 @@ export async function DELETE(request: NextRequest, context: Context) {
   await Promise.all(videos.map((file) => file.delete({ ignoreNotFound: true })));
   const [subtitles] = await adminBucket().getFiles({ prefix: `subtitles/${id}/` });
   await Promise.all(subtitles.map((file) => file.delete({ ignoreNotFound: true })));
+  const shards = await ref.collection("viewShards").get();
+  if (!shards.empty) {
+    const shardBatch = adminDb().batch();
+    shards.docs.forEach((item) => shardBatch.delete(item.ref));
+    await shardBatch.commit();
+  }
   const views = await adminDb().collection("views").where("seriesId", "==", id).get();
   for (let index = 0; index < views.docs.length; index += 400) {
     const batch = adminDb().batch();

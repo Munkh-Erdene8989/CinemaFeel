@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { checkoutListAmount, clearPass, extendPass, grantPass, revokePass, SUBSCRIPTION_DAYS, viewerCheckoutMode } from "./entitlement.ts";
+import { alreadyEntitled, checkoutListAmount, clearPass, contactsMatch, creatorMayWatchOwn, extendPass, grantPass, revokePass, SUBSCRIPTION_DAYS, viewerCheckoutMode } from "./entitlement.ts";
 import { WEEKLY_DAYS, WEEKLY_PRICE } from "./types.ts";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -19,6 +19,19 @@ test("revoke is the inverse of a pass, and a manual basic plan clears expiry", (
   assert.deepEqual(clearPass(), { subscriptionExpiresAt: 0 });
   assert.deepEqual(extendPass(now + DAY_MS, now), {});
   assert.deepEqual(extendPass(now - 1, now), { subscriptionExpiresAt: now + SUBSCRIPTION_DAYS * DAY_MS });
+});
+
+test("a paid creator watches their own film without buying it again", () => {
+  assert.equal(creatorMayWatchOwn({ active: true, paid: true, source: "self" }), true);
+  assert.equal(creatorMayWatchOwn({ active: true, paid: false, source: "self" }), false);
+  assert.equal(creatorMayWatchOwn({ active: false, paid: true, source: "self" }), false);
+  assert.equal(creatorMayWatchOwn({ active: true, source: "manual" }), true);
+  assert.equal(contactsMatch({ email: "A@Example.com" }, { email: "a@example.com" }), true);
+  assert.equal(contactsMatch({ email: "", phone: "" }, { email: "", phone: "" }), false);
+  assert.equal(alreadyEntitled({ id: "film", ownerId: "creator" }, { ownedIds: [], subscribed: true, creatorId: "" }), true);
+  assert.equal(alreadyEntitled({ id: "film", ownerId: "creator" }, { ownedIds: [], subscribed: false, creatorId: "creator" }), true);
+  assert.equal(alreadyEntitled({ id: "film", ownerId: "creator" }, { ownedIds: ["film"], subscribed: false }), true);
+  assert.equal(alreadyEntitled({ id: "film", ownerId: "creator" }, { ownedIds: [], subscribed: false, creatorId: "other" }), false);
 });
 
 test("checkout amounts follow the mode", () => {

@@ -1,5 +1,7 @@
 import { randomInt } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
+import { userCanWatch } from "@/lib/access";
+import { mapSeries } from "@/lib/catalog";
 import { viewerCheckoutQuote } from "@/lib/discount";
 import { adminDb } from "@/lib/firebase-admin";
 import { todayStamp } from "@/lib/format";
@@ -19,6 +21,12 @@ export async function POST(request: NextRequest) {
   const monthly = Number(settingsSnap.data()?.price || defaultSettings.price);
   const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly });
   if (!quote.ok) return jsonError(quote.error, quote.status);
+  if (quote.mode === "single" && quote.seriesId) {
+    const seriesSnap = await adminDb().collection("series").doc(quote.seriesId).get();
+    if (seriesSnap.exists && (await userCanWatch(adminDb(), user.uid, mapSeries(seriesSnap.id, seriesSnap.data()!)))) {
+      return jsonError("Та энэ киног үзэх эрхтэй.", 409);
+    }
+  }
 
   const senderInvoiceNo = `CF${Date.now()}${randomInt(100, 999)}`;
   const callbackUrl = `${siteOrigin(request)}/api/qpay/callback?sender=${senderInvoiceNo}`;

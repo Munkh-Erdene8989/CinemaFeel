@@ -22,6 +22,7 @@ export function FilmModal({
   isOwned,
   subscribed,
   signedIn,
+  accessReady = true,
   onCheckout,
   onWatch,
 }: {
@@ -31,10 +32,12 @@ export function FilmModal({
   isOwned: boolean;
   subscribed: boolean;
   signedIn: boolean;
+  accessReady?: boolean;
   onCheckout: (mode: CheckoutMode) => void;
   onWatch: () => void;
 }) {
   const available = film.access === "free" || isOwned || subscribed;
+  const checking = signedIn && !accessReady;
   const [preview, setPreview] = useState<YoutubePreview | null>(null);
 
   useEffect(() => {
@@ -80,7 +83,7 @@ export function FilmModal({
         <div className="relative min-h-72 md:min-h-[520px]">
           <img src={film.image} alt={film.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-[#151519]" />
-          {!available && (
+          {!available && !checking && (
             <button
               onClick={() => onCheckout("weekly")}
               className="offer-glow absolute left-1/2 top-1/2 z-10 w-[min(15.5rem,78%)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-[#ff8a9a]/50 bg-[#14080c]/75 px-6 py-5 text-center backdrop-blur-md"
@@ -101,7 +104,9 @@ export function FilmModal({
           <p className="mt-3 text-xs font-semibold text-zinc-500">{film.genre} · {film.episodes} анги · {film.age}</p>
           <p className="mt-5 text-sm leading-7 text-zinc-400">{film.description}</p>
           <div className="mt-7 border-t border-white/[0.07] pt-6">
-            {available ? (
+            {checking ? (
+              <p className="text-center text-sm font-bold text-zinc-400">Эрх шалгаж байна...</p>
+            ) : available ? (
               <button onClick={onWatch} className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-extrabold text-black">
                 <Icon name="play" className="h-4 w-4" fill /> Одоо үзэх
               </button>
@@ -127,7 +132,7 @@ export function FilmModal({
               </>
             )}
           </div>
-          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{available && signedIn ? "Таны эрх идэвхтэй байна." : available ? "Тоглуулах үед нэвтрэлт шалгана." : "7 хоногийн эрх бүх кинонд. Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног."}</p>
+          <p className="mt-4 text-center text-[10px] leading-4 text-zinc-600">{checking ? "Идэвхтэй эрх байвал төлбөр дахин гарахгүй." : available && signedIn ? "Таны эрх идэвхтэй байна." : available ? "Тоглуулах үед нэвтрэлт шалгана." : "7 хоногийн эрх бүх кинонд. Нэгж худалдан авалт хугацаагүй. Сарын эрх 30 хоног."}</p>
         </div>
       </div>
     </Modal>
