@@ -25,6 +25,7 @@ export function FilmModal({
   accessReady = true,
   onCheckout,
   onWatch,
+  watermark = "",
 }: {
   film: Series;
   monthlyPrice: number;
@@ -35,6 +36,7 @@ export function FilmModal({
   accessReady?: boolean;
   onCheckout: (mode: CheckoutMode) => void;
   onWatch: () => void;
+  watermark?: string;
 }) {
   const available = film.access === "free" || isOwned || subscribed;
   const checking = signedIn && !accessReady;
@@ -77,6 +79,7 @@ export function FilmModal({
               subtitleOffsetMs={preview.subtitleOffsetMs}
               title={preview.title || film.title}
               episodeLabel={preview.episodeLabel}
+              watermark={watermark}
             />
           </div>
         ) : (

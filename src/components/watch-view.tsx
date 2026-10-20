@@ -9,6 +9,7 @@ import { retrySubscribedPaywall } from "@/lib/playback";
 import { WEEKLY_PRICE, type Episode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
+import { playbackMark } from "@/lib/playback-mark";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
 import { EmailPromptModal } from "./email-prompt-modal";
@@ -41,6 +42,11 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const loadingRef = useRef<HTMLParagraphElement>(null);
   const paywallRetry = useRef(false);
   const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
+  const watermark = playbackMark({
+    phone: profile?.phone || user?.phoneNumber,
+    email: profile?.email || user?.email,
+  });
+  const stageRef = useRef<HTMLDivElement>(null);
   const entitled = film ? alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId }) : subscribed;
 
   useEffect(() => {
@@ -179,6 +185,21 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
     }, { merge: true }).catch(() => undefined);
   };
 
+  useEffect(() => {
+    const stage = stageRef.current;
+    const video = stage?.querySelector("video");
+    if (!stage || !video) return;
+    const retarget = () => {
+      const current = document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
+      if (current !== video) return;
+      document.exitFullscreen()
+        .then(() => stage.requestFullscreen())
+        .catch(() => undefined);
+    };
+    document.addEventListener("fullscreenchange", retarget);
+    return () => document.removeEventListener("fullscreenchange", retarget);
+  }, [url]);
+
   usePulse(loading && !url && !youtube, loadingRef);
 
   const episodeIndex = episodes.findIndex((item) => item.id === current?.id);
@@ -227,9 +248,10 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
                 const whole = Math.floor(seconds);
                 if (whole > 0 && whole % 5 === 0) saveProgress(whole);
               }}
+              watermark={watermark}
             />
           ) : (
-          <div className="relative aspect-[9/16] bg-zinc-900">
+          <div ref={stageRef} className="relative aspect-[9/16] bg-zinc-900">
             {url ? (
               <video
                 key={current?.id}
@@ -270,6 +292,11 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
                 </div>
               </div>
             )}
+            {url && watermark ? (
+              <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center select-none" aria-hidden="true">
+                <p className="absolute left-1/2 top-[70%] max-w-[78%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-line text-center text-[13px] font-bold leading-snug tracking-wide text-white/15 [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]">{watermark}</p>
+              </div>
+            ) : null}
           </div>
           )}
         </div>

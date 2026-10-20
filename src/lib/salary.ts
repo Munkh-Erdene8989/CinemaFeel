@@ -4,6 +4,8 @@ import type { Payment, Series } from "./types";
 const UB_OFFSET_MS = 8 * 60 * 60 * 1000;
 
 export const SALARY_CYCLE_COUNT = 6;
+export const SALARY_START_YEAR = 2026;
+export const SALARY_START_MONTH = 10;
 
 export type SalaryStatus = "Хүлээгдэж буй" | "Олгосон";
 
@@ -146,8 +148,22 @@ export function recentSalaryCycles(now = Date.now(), count = SALARY_CYCLE_COUNT)
   return cycles;
 }
 
+export function salaryCyclePayable(cycle: SalaryCycle) {
+  return cycle.year > SALARY_START_YEAR || (cycle.year === SALARY_START_YEAR && cycle.month >= SALARY_START_MONTH);
+}
+
+export function payableSalaryCycles(now = Date.now()): SalaryCycle[] {
+  const cycles: SalaryCycle[] = [];
+  let current = currentSalaryCycle(now);
+  while (salaryCyclePayable(current)) {
+    cycles.push(current);
+    current = previousSalaryCycle(current);
+  }
+  return cycles;
+}
+
 export function listedSalaryCycle(cycleId: string, now = Date.now()) {
-  return recentSalaryCycles(now).find((cycle) => cycle.id === cycleId) ?? null;
+  return payableSalaryCycles(now).find((cycle) => cycle.id === cycleId) ?? null;
 }
 
 export function buildSalaryCreators(

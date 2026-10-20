@@ -265,11 +265,35 @@ function injectStyles() {
       text-shadow: 0 1px 4px rgba(0,0,0,0.8);
       pointer-events: none;
     }
+    .cyp-mark {
+      position: absolute;
+      inset: 0;
+      z-index: 2;
+      display: grid;
+      place-items: center;
+      pointer-events: none;
+      user-select: none;
+    }
+    .cyp-mark span {
+      max-width: 78%;
+      color: rgba(255, 255, 255, 0.15);
+      font-size: clamp(13px, 2.1vw, 22px);
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      line-height: 1.45;
+      position: absolute;
+      left: 50%;
+      top: 70%;
+      text-align: center;
+      white-space: pre-line;
+      transform: translate(-50%, -50%);
+      text-shadow: 0 1px 8px rgba(0, 0, 0, 0.55);
+    }
     .cyp-play {
       position: absolute;
       left: 50%;
       top: 50%;
-      z-index: 2;
+      z-index: 4;
       display: grid;
       width: 68px;
       height: 68px;
@@ -448,6 +472,7 @@ function injectStyles() {
  *   subtitleText?: string,
  *   subtitleOffsetMs?: number,
  *   onTimeUpdate?: (seconds: number) => void,
+ *   watermark?: string,
  * }} props
  */
 export default function CustomYouTubePlayer({
@@ -464,6 +489,7 @@ export default function CustomYouTubePlayer({
   subtitleText,
   subtitleOffsetMs = 0,
   onTimeUpdate,
+  watermark = "",
 }) {
   const containerRef = useRef(null);
   const playerSlotRef = useRef(null);
@@ -732,6 +758,11 @@ export default function CustomYouTubePlayer({
       <div className="cyp-stage">
         <div ref={playerSlotRef} className="cyp-iframe-slot" />
         <div className="cyp-click-shield" onClick={togglePlay} />
+        {watermark ? (
+          <div className="cyp-mark" aria-hidden="true">
+            <span>{watermark}</span>
+          </div>
+        ) : null}
         {episodeLabel && <div className="cyp-badge">{episodeLabel}</div>}
         {!isPlaying && (
           <button type="button" className="cyp-play" onClick={togglePlay} aria-label="Тоглуулах">

@@ -48,8 +48,9 @@ export const creatorGuideSteps = [
   {
     section: "Цалин",
     title: "Цалин",
-    role: "Энд тухайн 15 хоногт авах дүн, олголтын өдөр, төлөв харагдана.",
+    role: "Энд 2026 оны 10 сараас хойш тухайн 15 хоногт авах дүн, олголтын өдөр, төлөв харагдана.",
     points: [
+      ["Эхлэл", "10 сараас өмнөх орлого цалинд орохгүй. 10 сарын 1-нээс хойших борлуулалт тооцогдоно."],
       ["Одоогийн цикл", "1–15 эсвэл 16-ноос сарын эцэс хүртэлх орлого."],
       ["Олголт", "Сар бүрийн 15 болон 30-нд олгоно. Хоёрдугаар сард сарын сүүлийн өдөр."],
       ["Төлөв", "Super admin олгосон гэж тэмдэглэсний дараа статус солигдоно."],
@@ -60,27 +61,29 @@ export const creatorGuideSteps = [
 
 export function CreatorGuide({
   step,
+  steps = creatorGuideSteps,
   busy,
   error,
   onStep,
   onDone,
 }: {
   step: number;
+  steps?: readonly (typeof creatorGuideSteps)[number][];
   busy: boolean;
   error: string;
   onStep: (index: number) => void;
   onDone: () => void;
 }) {
-  const current = creatorGuideSteps[step] ?? creatorGuideSteps[0];
-  const last = step === creatorGuideSteps.length - 1;
+  const current = steps[step] ?? steps[0];
+  const last = step === steps.length - 1;
 
   return (
     <div className="pointer-events-none fixed inset-x-0 bottom-0 z-[90] p-3 sm:p-6">
       <div className="pointer-events-auto mx-auto w-full max-w-xl rounded-[28px] border border-white/10 bg-[#16161b]/95 p-5 shadow-2xl backdrop-blur-md sm:p-6" role="dialog" aria-modal="false" aria-labelledby="creator-guide-title">
         <div className="flex items-center justify-between gap-3">
-          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#ff536a]">Эхлэх заавар · {step + 1}/{creatorGuideSteps.length}</p>
+          <p className="text-[11px] font-bold uppercase tracking-[0.18em] text-[#ff536a]">Эхлэх заавар · {step + 1}/{steps.length}</p>
           <div className="flex gap-1.5" aria-hidden="true">
-            {creatorGuideSteps.map((item, index) => (
+            {steps.map((item, index) => (
               <span key={item.section} className={`h-1.5 rounded-full ${index === step ? "w-6 bg-[#ff536a]" : "w-1.5 bg-white/20"}`} />
             ))}
           </div>
@@ -94,7 +97,7 @@ export function CreatorGuide({
             </li>
           ))}
         </ul>
-        {last && <p className="mt-4 text-xs leading-5 text-zinc-500">«Сайт руу буцах» нь CinemaFeel руу гаргана. «Гарах» нь самбараас гарна.</p>}
+        {last && <p className="mt-4 text-xs leading-5 text-zinc-500">{current?.section === "Цалин" ? "Цалин 2026 оны 10 сараас хойш тооцогдоно. " : ""}«Сайт руу буцах» нь CinemaFeel руу гаргана. «Гарах» нь самбараас гарна.</p>}
         {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
         <div className="mt-5 flex items-center gap-2">
           {step > 0 && (

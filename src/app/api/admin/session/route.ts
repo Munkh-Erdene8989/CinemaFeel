@@ -14,5 +14,6 @@ export async function GET(request: NextRequest) {
   const cornerNameEdits = Number(data?.cornerNameEdits ?? 0);
   const termsSeen = Number(data?.creatorTermsSeenAt ?? 0) > 0;
   const guideSeen = Number(data?.creatorGuideSeenAt ?? 0) > 0;
-  return NextResponse.json({ ...session, inviteCode, username, cornerName, cornerNameEdits, termsSeen, guideSeen });
+  const salaryGuideSeen = Number(data?.salaryGuideSeenAt ?? 0) > 0;
+  return NextResponse.json({ ...session, inviteCode, username, cornerName, cornerNameEdits, termsSeen, guideSeen, salaryGuideSeen });
 }

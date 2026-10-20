@@ -149,6 +149,7 @@ export function AdminApp() {
   const [termsError, setTermsError] = useState("");
   const [guideOpen, setGuideOpen] = useState(false);
   const [guideStep, setGuideStep] = useState(0);
+  const [guideMode, setGuideMode] = useState<"full" | "salary">("full");
   const [guideBusy, setGuideBusy] = useState(false);
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
@@ -241,8 +242,10 @@ export function AdminApp() {
     }
   };
 
+  const guideSteps = guideMode === "salary" ? creatorGuideSteps.filter((item) => item.section === "Цалин") : creatorGuideSteps;
+
   const showGuideStep = (index: number) => {
-    const next = creatorGuideSteps[index];
+    const next = guideSteps[index];
     if (!next) return;
     setGuideStep(index);
     setSection(next.section);
@@ -252,7 +255,7 @@ export function AdminApp() {
     setGuideBusy(true);
     setGuideError("");
     try {
-      await adminFetch("/api/admin/guide", { method: "POST" });
+      await adminFetch("/api/admin/guide", { method: "POST", body: JSON.stringify({ scope: guideMode === "salary" ? "salary" : "full" }) });
       guideDone.current = true;
       setGuideOpen(false);
       setSection("Хяналтын самбар");
@@ -266,7 +269,7 @@ export function AdminApp() {
   useEffect(() => {
     let ignore = false;
     adminFetch<{
-      session: AdminSession & { inviteCode?: string; username?: string; cornerName?: string; cornerNameEdits?: number; termsSeen?: boolean; guideSeen?: boolean };
+      session: AdminSession & { inviteCode?: string; username?: string; cornerName?: string; cornerNameEdits?: number; termsSeen?: boolean; guideSeen?: boolean; salaryGuideSeen?: boolean };
       series: SeriesWithEpisodes[];
       settings: Settings;
       payments: Payment[];
@@ -285,6 +288,12 @@ export function AdminApp() {
         setCornerEdits(Number(data.session.cornerNameEdits || 0));
         if (!termsAccepted.current) setTermsOpen(creator && data.session.termsSeen !== true);
         if (!guideDone.current && creator && data.session.termsSeen === true && data.session.guideSeen !== true) setGuideOpen(true);
+        if (!guideDone.current && creator && data.session.termsSeen === true && data.session.guideSeen === true && data.session.salaryGuideSeen !== true) {
+          setGuideMode("salary");
+          setGuideStep(0);
+          setSection("Цалин");
+          setGuideOpen(true);
+        }
         setContent(data.series);
         setSettings(data.settings);
         setPayments(data.payments);
@@ -353,7 +362,7 @@ export function AdminApp() {
         <p className="mt-9 px-3 text-[10px] font-black uppercase tracking-[.2em] text-zinc-600">Удирдлага</p>
         <nav className="mt-3 space-y-1">
           {menu.map(([label, icon]) => (
-            <button key={label} onClick={() => (guiding ? showGuideStep(creatorGuideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guiding && creatorGuideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>
+            <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>
               <Icon name={icon} className="h-4 w-4" />
               {label}
             </button>
@@ -379,7 +388,7 @@ export function AdminApp() {
         <div className={`p-5 md:p-8 ${guiding ? "pb-96" : ""}`}>
           <div className="scrollbar-none mb-6 flex gap-2 overflow-x-auto lg:hidden">
             {menu.map(([label]) => (
-              <button key={label} onClick={() => (guiding ? showGuideStep(creatorGuideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && creatorGuideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
+              <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
             ))}
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} />}
@@ -421,7 +430,7 @@ export function AdminApp() {
         </div>
       </main>
       {termsOpen && <CreatorTermsModal busy={termsBusy} error={termsError} onAccept={acceptTerms} />}
-      {guiding && <CreatorGuide step={guideStep} busy={guideBusy} error={guideError} onStep={showGuideStep} onDone={finishGuide} />}
+      {guiding && <CreatorGuide step={guideStep} steps={guideSteps} busy={guideBusy} error={guideError} onStep={showGuideStep} onDone={finishGuide} />}
       {notice && (
         <div className="fixed bottom-6 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-2 rounded-full bg-white px-5 py-3 text-xs font-extrabold text-black shadow-2xl">
           <Icon name="check" className="h-4 w-4 text-emerald-600" />
@@ -2060,7 +2069,7 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
     return (
       <div>
         <h2 className="text-2xl font-black">Цалин</h2>
-        <p className="mt-1 max-w-3xl text-sm text-zinc-600">Тухайн циклийн орлого. Сар бүрийн 15 болон 30-нд олгоно. 16 болон дараа сарын 1-нд шинэ цикл ₮0-оос эхэлнэ. Төлөв super admin олгосон гэж тэмдэглэсний дараа солигдоно.</p>
+        <p className="mt-1 max-w-3xl text-sm text-zinc-600">2026 оны 10 сараас хойших циклийн орлого. Сар бүрийн 15 болон 30-нд олгоно. 16 болон дараа сарын 1-нд шинэ цикл ₮0-оос эхэлнэ. Төлөв super admin олгосон гэж тэмдэглэсний дараа солигдоно.</p>
         {!current && <p className="mt-8 text-sm text-zinc-500">Цалингийн цикл алга.</p>}
         {current && (
           <>
@@ -2120,7 +2129,7 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
   return (
     <div>
       <h2 className="text-2xl font-black">Цалин</h2>
-      <p className="mt-1 max-w-3xl text-sm text-zinc-600">Бүтээгч бүрийн одоогийн цикл болон сүүлд хаагдсан циклийн дүн. Төлөв дээр дарж олгосон эсвэл хүлээгдэж буй болгоно. Хуучин циклийг мөрөө дэлгээд тэмдэглэнэ.</p>
+      <p className="mt-1 max-w-3xl text-sm text-zinc-600">2026 оны 10 сараас хойших цикл. Бүтээгч бүрийн одоогийн болон сүүлд хаагдсан дүн. Төлөв дээр дарж олгосон эсвэл хүлээгдэж буй болгоно. Хуучин циклийг мөрөө дэлгээд тэмдэглэнэ.</p>
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[980px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">
@@ -2140,7 +2149,6 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
                     <td className="px-5">
                       <span className="font-bold">{current ? formatMoney(current.total) : "—"}</span>
                       {current && <small className="mt-1 block text-zinc-600">{current.label}</small>}
-                      {current && <span className="mt-2 inline-flex"><SalaryStatusButton line={current} busy={busyKey === `${creator.adminId}_${current.id}`} onClick={() => toggle(creator.adminId, current)} /></span>}
                     </td>
                     <td className="px-5">
                       <span className="font-bold">{closed ? formatMoney(closed.total) : "—"}</span>

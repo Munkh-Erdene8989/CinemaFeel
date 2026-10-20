@@ -43,6 +43,7 @@ export async function GET(request: NextRequest) {
         cornerNameEdits: Number(profile?.cornerNameEdits ?? 0),
         termsSeen: Number(profile?.creatorTermsSeenAt ?? 0) > 0,
         guideSeen: Number(profile?.creatorGuideSeenAt ?? 0) > 0,
+        salaryGuideSeen: Number(profile?.salaryGuideSeenAt ?? 0) > 0,
       },
       series: series.filter((item) => item.ownerId === session.adminId),
       settings,

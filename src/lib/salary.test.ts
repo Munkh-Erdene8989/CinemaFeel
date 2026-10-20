@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSalaryCreators, currentSalaryCycle, recentSalaryCycles, salaryCycleAt } from "./salary.ts";
+import { buildSalaryCreators, currentSalaryCycle, payableSalaryCycles, recentSalaryCycles, salaryCycleAt } from "./salary.ts";
 import type { Payment, Series } from "./types.ts";
 
 const UB_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -89,6 +89,13 @@ test("February pays on the last day of the month", () => {
   assert.equal(leap.payoutLabel, "2 сарын 29");
   assert.equal(leap.label, "2 сарын 16 – 29");
   assert.equal(currentSalaryCycle(at(2024, 2, 29, 23, 59)).id, "2024-02-b");
+});
+
+test("payable cycles start in October 2026 and keep every later half", () => {
+  assert.deepEqual(payableSalaryCycles(at(2026, 9, 30)).map((cycle) => cycle.id), []);
+  assert.deepEqual(payableSalaryCycles(at(2026, 10, 10)).map((cycle) => cycle.id), ["2026-10-a"]);
+  assert.deepEqual(payableSalaryCycles(at(2026, 10, 21)).map((cycle) => cycle.id), ["2026-10-b", "2026-10-a"]);
+  assert.deepEqual(payableSalaryCycles(at(2026, 11, 1)).map((cycle) => cycle.id), ["2026-11-a", "2026-10-b", "2026-10-a"]);
 });
 
 test("a paid mark changes status without changing the cycle amount", () => {

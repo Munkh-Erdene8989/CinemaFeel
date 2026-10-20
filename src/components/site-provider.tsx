@@ -10,6 +10,7 @@ import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/typ
 import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { alreadyEntitled } from "@/lib/entitlement";
+import { playbackMark } from "@/lib/playback-mark";
 import { accountInitial, subscriptionActive } from "@/lib/format";
 import { AuthModal } from "./auth-modal";
 import { JoinModal } from "./join-modal";
@@ -307,7 +308,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
                   <button data-chrome="action" onClick={value.logout} className="hidden text-xs font-bold text-zinc-500 hover:text-white md:block">Гарах</button>
                 </>
               ) : (
-                <button data-chrome="action" onClick={() => setAuthOpen(true)} className="flex h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold sm:px-4">
+                <button data-chrome="action" onClick={() => setAuthOpen(true)} className="hidden h-10 items-center gap-2 rounded-full border border-white/10 bg-white/[0.05] px-3 text-xs font-bold md:flex sm:px-4">
                   <Icon name="user" className="h-4 w-4" />
                   <span className="hidden sm:inline">Нэвтрэх</span>
                 </button>
@@ -369,6 +370,10 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             accessReady={accessReady}
             onCheckout={(mode) => beginCheckout(mode, selected)}
             onWatch={() => watch(selected)}
+            watermark={playbackMark({
+              phone: profile?.phone || user?.phoneNumber,
+              email: profile?.email || user?.email,
+            })}
           />
         )}
         {checkout && (
