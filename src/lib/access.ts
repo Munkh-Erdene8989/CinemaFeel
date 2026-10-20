@@ -1,19 +1,34 @@
+import { after } from "next/server";
 import { FieldValue, type DocumentReference, type Firestore } from "firebase-admin/firestore";
 import { contactsMatch, creatorMayWatchOwn, grantPass, isSubscriptionCheckout } from "./entitlement";
-import type { AppUser, Payment, Series } from "./types";
 import { subscriptionActive, todayStamp } from "./format";
+import { collectOwnedSeriesIds, listedOwnership } from "./ownership";
+import type { AppUser, Payment, Series } from "./types";
 
 export { subscriptionActive };
 
-export async function userCanWatch(db: Firestore, uid: string, series: Series) {
-  const userSnap = await db.collection("users").doc(uid).get();
-  const user = userSnap.exists ? (userSnap.data() as AppUser) : null;
+export async function userCanWatch(db: Firestore, uid: string, series: Series, knownUser?: Record<string, unknown> | null) {
+  const user = knownUser !== undefined ? knownUser : ((await db.collection("users").doc(uid).get()).data() ?? null);
   if (user?.status === "Түр зогссон") return false;
   if (series.access === "free") return true;
-  if (subscriptionActive(user)) return true;
-  if (user && series.ownerId && (await viewerOwnsCreatorCatalog(db, user, series.ownerId))) return true;
+  if (subscriptionActive(user as AppUser | null)) return true;
+  if (user && series.ownerId && (await viewerOwnsCreatorCatalog(db, user as AppUser, series.ownerId))) return true;
+  const listed = listedOwnership(user?.ownedSeriesIds, series.id);
+  if (listed !== null) return listed;
   const owned = await db.collection("purchases").where("uid", "==", uid).get();
-  return owned.docs.some((item) => item.data().seriesId === series.id);
+  const ids = collectOwnedSeriesIds(owned.docs.map((item) => item.data().seriesId));
+  if (user) {
+    after(() =>
+      db
+        .collection("users")
+        .doc(uid)
+        .set({ ownedSeriesIds: ids }, { merge: true })
+        .catch((error) => {
+          console.warn("Худалдан авалтыг хэрэглэгч дээр хадгалж чадсангүй.", error);
+        }),
+    );
+  }
+  return ids.includes(series.id);
 }
 
 export async function findLiveCreatorId(db: Firestore, contact: { email?: string; phone?: string }) {
@@ -82,8 +97,18 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
     const current = Number(userSnap.data()?.subscriptionExpiresAt ?? 0);
     await userRef.set(grantPass(payment.mode, current), { merge: true });
   } else if (payment.seriesId) {
-    const existing = await db.collection("purchases").where("uid", "==", payment.uid).get();
-    const alreadyOwned = existing.docs.some((item) => item.data().seriesId === payment.seriesId);
+    const userRef = db.collection("users").doc(payment.uid);
+    const userSnap = await userRef.get();
+    const known = userSnap.data()?.ownedSeriesIds;
+    let alreadyOwned = false;
+    if (Array.isArray(known)) {
+      alreadyOwned = known.map(String).includes(payment.seriesId);
+      if (!alreadyOwned) await userRef.set({ ownedSeriesIds: FieldValue.arrayUnion(payment.seriesId) }, { merge: true });
+    } else {
+      const existing = await db.collection("purchases").where("uid", "==", payment.uid).get();
+      alreadyOwned = existing.docs.some((item) => item.data().seriesId === payment.seriesId);
+      await userRef.set({ ownedSeriesIds: collectOwnedSeriesIds(existing.docs.map((item) => item.data().seriesId), payment.seriesId) }, { merge: true });
+    }
     if (!alreadyOwned) {
       await db.collection("purchases").add({
         uid: payment.uid,

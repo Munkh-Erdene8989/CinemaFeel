@@ -9,7 +9,7 @@ import { Icon, Modal } from "./icons";
 type YoutubePreview = {
   videoId: string;
   startAt: number;
-  subtitleText: string;
+  subtitleUrl: string;
   subtitleOffsetMs: number;
   episodeLabel: string;
   title: string;
@@ -54,7 +54,7 @@ export function FilmModal({
       setPreview({
         videoId: data.videoId,
         startAt: Number(data.startAt ?? 0),
-        subtitleText: data.subtitleText || "",
+        subtitleUrl: data.subtitleUrl || "",
         subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
         episodeLabel: data.episodeLabel || "",
         title: data.title || film.title,
@@ -73,7 +73,7 @@ export function FilmModal({
             <CustomYouTubePlayer
               videoId={preview.videoId}
               startAt={preview.startAt}
-              subtitleText={preview.subtitleText}
+              subtitleUrl={preview.subtitleUrl}
               subtitleOffsetMs={preview.subtitleOffsetMs}
               title={preview.title || film.title}
               episodeLabel={preview.episodeLabel}

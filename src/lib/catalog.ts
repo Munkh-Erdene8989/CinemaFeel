@@ -1,5 +1,5 @@
 import { randomBytes, randomUUID } from "crypto";
-import type { DocumentData, DocumentReference } from "firebase-admin/firestore";
+import { FieldValue, type DocumentData, type DocumentReference } from "firebase-admin/firestore";
 import { adminBucket, adminDb } from "./firebase-admin";
 import { seriesFromRecord, seriesWritePayload } from "./series-doc";
 import type { AdminSession, Episode, SeriesWithEpisodes } from "./types";
@@ -20,11 +20,58 @@ export async function uniqueShareCode(reserved = new Set<string>()) {
     for (let attempt = 0; attempt < 12; attempt += 1) {
       const code = randomShareCode(length);
       if (reserved.has(code)) continue;
-      const existing = await adminDb().collection("series").where("shareCode", "==", code).limit(1).get();
-      if (existing.empty) return code;
+      const [direct, existing] = await Promise.all([
+        adminDb().collection("shareCodes").doc(code).get(),
+        adminDb().collection("series").where("shareCode", "==", code).limit(1).get(),
+      ]);
+      if (!direct.exists && existing.empty) return code;
     }
   }
   return randomShareCode(6);
+}
+
+export async function writeShareCode(code: string, seriesId: string, status: string) {
+  const normalized = code.trim().toLowerCase();
+  if (!normalized || !seriesId) return;
+  await adminDb().collection("shareCodes").doc(normalized).set({ seriesId, status });
+}
+
+export async function deleteShareCode(code: string) {
+  const normalized = code.trim().toLowerCase();
+  if (!normalized) return;
+  await adminDb().collection("shareCodes").doc(normalized).delete();
+}
+
+export async function rebuildSeriesPreview(seriesRef: DocumentReference) {
+  const episodes = await listEpisodes(seriesRef);
+  for (const episode of episodes) {
+    if (episode.source !== "youtube" && !episode.youtubeId) continue;
+    let videoId = episode.youtubeId ?? "";
+    let subtitlePath = episode.subtitlePath ?? "";
+    if (!videoId) {
+      const playback = await seriesRef.collection("playback").doc(episode.id).get();
+      videoId = String(playback.data()?.youtubeId ?? "");
+      if (!subtitlePath) subtitlePath = String(playback.data()?.subtitlePath ?? "");
+    }
+    if (!videoId) continue;
+    await seriesRef.set(
+      {
+        previewReady: true,
+        preview: {
+          episodeId: episode.id,
+          episodeNumber: episode.number,
+          videoId,
+          startAt: Number(episode.startAt ?? 0),
+          subtitlePath,
+          subtitleOffsetMs: Number(episode.subtitleOffsetMs ?? 0),
+          episodeLabel: episode.title,
+        },
+      },
+      { merge: true },
+    );
+    return;
+  }
+  await seriesRef.set({ preview: FieldValue.delete(), previewReady: true }, { merge: true });
 }
 
 export function mapSeries(id: string, data: DocumentData) {

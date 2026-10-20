@@ -3,6 +3,7 @@ import { listEpisodes, newId, readManageableSeries } from "@/lib/catalog";
 import { announceNewEpisode } from "@/lib/episode-announce";
 import { adminBucket } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
+import { shouldReplacePreview } from "@/lib/preview";
 import { parseYouTubeUrl } from "@/lib/youtube";
 
 export async function GET(request: NextRequest, context: { params: Promise<{ id: string }> }) {
@@ -55,6 +56,8 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     source?: "youtube";
     startAt?: number;
     subtitleOffsetMs?: number;
+    youtubeId?: string;
+    subtitlePath?: string;
     telegramAnnounce: "pending";
   } = {
     number: Number(body.number ?? 1),
@@ -66,6 +69,7 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
 
   if (youtubeId) {
     episode.source = "youtube";
+    episode.youtubeId = youtubeId;
     episode.startAt = startAt;
     episode.subtitleOffsetMs = subtitleOffsetMs;
     const playback: { youtubeId: string; subtitlePath?: string } = { youtubeId };
@@ -81,13 +85,27 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
         return jsonError(`Хадмал хадгалагдсангүй. ${message}`, 503);
       }
       playback.subtitlePath = subtitlePath;
+      episode.subtitlePath = subtitlePath;
     }
     await series.collection("playback").doc(episodeId).set(playback);
   }
 
   await series.collection("episodes").doc(episodeId).set(episode);
   const count = (await series.collection("episodes").get()).size;
-  await series.set({ episodes: count }, { merge: true });
+  const seriesPatch: Record<string, unknown> = { episodes: count };
+  if (youtubeId && shouldReplacePreview(loaded.snap.data()?.preview, episode.number)) {
+    seriesPatch.previewReady = true;
+    seriesPatch.preview = {
+      episodeId,
+      episodeNumber: episode.number,
+      videoId: youtubeId,
+      startAt,
+      subtitlePath: episode.subtitlePath ?? "",
+      subtitleOffsetMs,
+      episodeLabel: episode.title,
+    };
+  }
+  await series.set(seriesPatch, { merge: true });
   let telegram: { telegramSent?: boolean; telegramError?: string; telegramPending?: string } = {};
   try {
     telegram = await announceNewEpisode(id, episodeId, siteOrigin(request));

@@ -3,7 +3,7 @@ import { WatchView } from "@/components/watch-view";
 import { adminDb } from "@/lib/firebase-admin";
 import { isMature } from "@/lib/mature";
 
-export const dynamic = "force-dynamic";
+export const revalidate = 60;
 
 type Props = { params: Promise<{ seriesId: string; episode: string }> };
 

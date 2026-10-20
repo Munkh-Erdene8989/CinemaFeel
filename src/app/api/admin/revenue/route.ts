@@ -3,7 +3,6 @@ import { mapSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 import { revenueForWindow, revenueWindow, scopedRevenue } from "@/lib/revenue";
-import { withRolledViews } from "@/lib/views";
 import type { Payment } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
@@ -15,7 +14,7 @@ export async function GET(request: NextRequest) {
     adminDb().collection("payments").where("createdAt", ">=", since).get(),
     adminDb().collection("admins").get(),
   ]);
-  const series = await withRolledViews(seriesSnap.docs.map((item) => mapSeries(item.id, item.data())));
+  const series = seriesSnap.docs.map((item) => mapSeries(item.id, item.data()));
   const payments = paymentSnap.docs.map((item) => ({ id: item.id, ...(item.data() as Omit<Payment, "id">) }));
   const staff = staffSnap.docs.map((admin) => {
     const data = admin.data();

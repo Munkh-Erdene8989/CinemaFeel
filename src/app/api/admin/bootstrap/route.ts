@@ -3,7 +3,6 @@ import { listSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
 import { revenueForWindow, revenueWindow, scopedRevenue } from "@/lib/revenue";
-import { withRolledViews } from "@/lib/views";
 import { mapStaff } from "@/lib/staff";
 import { mergeSettings, type AppUser, type Payment, type Settings } from "@/lib/types";
 
@@ -17,7 +16,7 @@ export async function GET(request: NextRequest) {
   const creator = session.role === "admin";
   const { since } = revenueWindow(creator ? 30 : 90);
   const [series, settingsSnap, paymentSnap, staffSnap, plusSnap, countSnap] = await Promise.all([
-    listSeries().then(withRolledViews),
+    listSeries(),
     adminDb().collection("settings").doc("app").get(),
     adminDb().collection("payments").where("createdAt", ">=", since).get(),
     adminDb().collection("admins").get(),

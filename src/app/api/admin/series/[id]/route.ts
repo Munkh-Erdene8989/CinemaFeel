@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { publishNotice } from "@/lib/publish-notice";
 import { seriesStatus } from "@/lib/series-doc";
-import { deleteEpisodeMedia, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode } from "@/lib/catalog";
+import { deleteEpisodeMedia, deleteShareCode, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode, writeShareCode } from "@/lib/catalog";
 import { adminBucket, adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre } from "@/lib/genres";
 import { isMature } from "@/lib/mature";
@@ -20,7 +20,9 @@ export async function PATCH(request: NextRequest, context: Context) {
   const current = loaded.snap;
 
   if (typeof body.status === "string" && Object.keys(body).length === 1) {
-    await ref.set({ status: seriesStatus(body.status) }, { merge: true });
+    const nextStatus = seriesStatus(body.status);
+    await ref.set({ status: nextStatus }, { merge: true });
+    await writeShareCode(String(current.data()?.shareCode ?? ""), id, nextStatus);
     const notice = await publishNotice(id, siteOrigin(request), body.status);
     return NextResponse.json({ ok: true, ...notice });
   }
@@ -44,6 +46,7 @@ export async function PATCH(request: NextRequest, context: Context) {
   let shareCode = String(current.data()?.shareCode ?? "");
   if (!shareCode) shareCode = await uniqueShareCode();
   await ref.set({ ...payload, shareCode }, { merge: true });
+  await writeShareCode(shareCode, id, payload.status);
   const notice = await publishNotice(id, siteOrigin(request), payload.status);
   return NextResponse.json({ ok: true, image: payload.image, cover: payload.cover, shareCode, ...notice });
 }
@@ -55,6 +58,7 @@ export async function DELETE(request: NextRequest, context: Context) {
   const loaded = await readManageableSeries(session, id);
   if (!loaded.ok) return jsonError(loaded.error, loaded.status);
   const { ref } = loaded;
+  const shareCode = String(loaded.snap.data()?.shareCode ?? "");
   const episodes = await ref.collection("episodes").get();
   await Promise.all(
     episodes.docs.map(async (episode) => {
@@ -84,6 +88,7 @@ export async function DELETE(request: NextRequest, context: Context) {
     views.docs.slice(index, index + 400).forEach((item) => batch.delete(item.ref));
     await batch.commit();
   }
+  await deleteShareCode(shareCode);
   await ref.delete();
   return NextResponse.json({ ok: true });
 }

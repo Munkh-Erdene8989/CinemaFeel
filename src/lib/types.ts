@@ -79,6 +79,8 @@ export type Episode = {
   source?: "file" | "youtube";
   startAt?: number;
   subtitleOffsetMs?: number;
+  youtubeId?: string;
+  subtitlePath?: string;
 };
 
 export type Lesson = {
@@ -106,6 +108,7 @@ export type AppUser = {
   displayName: string;
   photoURL: string;
   creatorId?: string;
+  ownedSeriesIds?: string[];
 };
 
 export type Purchase = {

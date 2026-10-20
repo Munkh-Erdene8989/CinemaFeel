@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { FieldValue } from "firebase-admin/firestore";
 import { detachCreatorViewers } from "@/lib/access";
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { adminDb } from "@/lib/firebase-admin";
@@ -30,9 +31,14 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     await detachCreatorViewers(adminDb(), payment.creatorId);
   } else if (payment.seriesId) {
     const purchases = await adminDb().collection("purchases").where("uid", "==", payment.uid).get();
-    await Promise.all(
-      purchases.docs.filter((item) => item.data().seriesId === payment.seriesId && item.data().paymentId === id).map((item) => item.ref.delete()),
-    );
+    const removed = purchases.docs.filter((item) => item.data().seriesId === payment.seriesId && item.data().paymentId === id);
+    await Promise.all(removed.map((item) => item.ref.delete()));
+    const stillOwns = purchases.docs.some((item) => item.data().seriesId === payment.seriesId && item.data().paymentId !== id);
+    const userRef = adminDb().collection("users").doc(payment.uid);
+    const userSnap = await userRef.get();
+    if (!stillOwns && Array.isArray(userSnap.data()?.ownedSeriesIds)) {
+      await userRef.set({ ownedSeriesIds: FieldValue.arrayRemove(payment.seriesId) }, { merge: true });
+    }
   }
   await ref.set({ status: "Буцаагдсан" }, { merge: true });
   return NextResponse.json({ ok: true, mode: payment.mode, uid: payment.uid, creatorId: payment.creatorId || "" });

@@ -11,7 +11,7 @@ export function viewShardId() {
 }
 
 export function sumShards(shards: { views?: unknown; uniqueViews?: unknown }[]) {
-  return shards.reduce(
+  return shards.reduce<{ views: number; uniqueViews: number }>(
     (sum, shard) => ({
       views: sum.views + Math.max(0, Number(shard.views) || 0),
       uniqueViews: sum.uniqueViews + Math.max(0, Number(shard.uniqueViews) || 0),
@@ -96,16 +96,25 @@ export async function rollupSeriesViews(seriesId: string) {
   return totals;
 }
 
-export async function withRolledViews<T extends { id: string; views: number; uniqueViews: number }>(series: T[]) {
-  return Promise.all(
-    series.map(async (item) => {
+export async function rollupAllSeriesViews() {
+  const snap = await adminDb().collection("series").get();
+  const ids = snap.docs.map((item) => item.id);
+  let rolled = 0;
+  let failed = 0;
+  const queue = [...ids];
+  async function worker() {
+    for (;;) {
+      const id = queue.shift();
+      if (!id) return;
       try {
-        const totals = await rollupSeriesViews(item.id);
-        return totals ? { ...item, views: totals.views, uniqueViews: totals.uniqueViews } : item;
+        const totals = await rollupSeriesViews(id);
+        if (totals) rolled += 1;
       } catch (error) {
-        console.warn("Үзэлтийн тоолуурыг нэгтгэж чадсангүй.", item.id, error);
-        return item;
+        failed += 1;
+        console.warn("Үзэлтийн тоолуурыг нэгтгэж чадсангүй.", id, error);
       }
-    }),
-  );
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(6, ids.length) }, () => worker()));
+  return { series: ids.length, rolled, failed };
 }

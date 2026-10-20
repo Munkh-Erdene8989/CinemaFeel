@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { deleteEpisodeMedia, readManageableSeries } from "@/lib/catalog";
+import { deleteEpisodeMedia, readManageableSeries, rebuildSeriesPreview } from "@/lib/catalog";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; episodeId: string }> }) {
@@ -13,6 +13,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   if (!snap.exists) return jsonError("Анги олдсонгүй.", 404);
   await deleteEpisodeMedia(loaded.ref, episodeId, snap.data() ?? {});
   await ref.delete();
+  if (String(loaded.snap.data()?.preview?.episodeId ?? "") === episodeId) await rebuildSeriesPreview(loaded.ref);
   const count = (await loaded.ref.collection("episodes").get()).size;
   await loaded.ref.set({ episodes: count }, { merge: true });
   return NextResponse.json({ ok: true });

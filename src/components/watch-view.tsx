@@ -30,7 +30,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [episodesReady, setEpisodesReady] = useState(false);
   const [url, setUrl] = useState("");
-  const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleText: string; subtitleOffsetMs: number } | null>(null);
+  const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleUrl: string; subtitleOffsetMs: number } | null>(null);
   const [error, setError] = useState("");
   const [needsAuth, setNeedsAuth] = useState(false);
   const [needsPay, setNeedsPay] = useState(false);
@@ -119,7 +119,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({ seriesId, episodeId: current.id }),
       });
-      const data = (await response.json()) as { error?: string; url?: string; code?: string; youtubeId?: string; startAt?: number; subtitleText?: string; subtitleOffsetMs?: number };
+      const data = (await response.json()) as { error?: string; url?: string; code?: string; youtubeId?: string; startAt?: number; subtitleUrl?: string; subtitleOffsetMs?: number };
       if (ignore) return;
       setLoading(false);
       if (data.code === "auth") {
@@ -146,7 +146,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
         setYoutube({
           videoId: data.youtubeId,
           startAt: Number(data.startAt ?? 0),
-          subtitleText: data.subtitleText || "",
+          subtitleUrl: data.subtitleUrl || "",
           subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
         });
         setUrl("");
@@ -214,7 +214,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               key={current?.id}
               videoId={youtube.videoId}
               startAt={youtube.startAt}
-              subtitleText={youtube.subtitleText}
+              subtitleUrl={youtube.subtitleUrl}
               subtitleOffsetMs={youtube.subtitleOffsetMs}
               autoplay
               title={film?.title}
