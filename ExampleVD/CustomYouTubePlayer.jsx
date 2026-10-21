@@ -276,14 +276,14 @@ function injectStyles() {
     }
     .cyp-mark span {
       max-width: 78%;
-      color: rgba(255, 255, 255, 0.15);
+      color: rgba(255, 255, 255, 0.1);
       font-size: clamp(13px, 2.1vw, 22px);
       font-weight: 700;
       letter-spacing: 0.04em;
       line-height: 1.45;
       position: absolute;
       left: 50%;
-      top: 70%;
+      top: 65%;
       text-align: center;
       white-space: pre-line;
       transform: translate(-50%, -50%);

@@ -446,6 +446,34 @@ function userLabel(user: AppUser) {
   return user.email || (user.phone ? formatPhone(user.phone) : user.displayName || "—");
 }
 
+type SignupChannel = "email" | "phone" | "both";
+
+function userContacts(user: Pick<AppUser, "email" | "phone">) {
+  const email = String(user.email || "").includes("@") ? user.email : "";
+  const phone = String(user.phone || "").trim() ? formatPhone(user.phone || "") : "";
+  return { email, phone };
+}
+
+function signupChannel(user: Pick<AppUser, "email" | "phone">): SignupChannel | null {
+  const { email, phone } = userContacts(user);
+  if (email && phone) return "both";
+  if (email) return "email";
+  if (phone) return "phone";
+  return null;
+}
+
+const signupMeta: Record<SignupChannel, { label: string; tone: string }> = {
+  email: { label: "И-мэйл", tone: "bg-violet-400/15 text-violet-300" },
+  phone: { label: "Утас", tone: "bg-sky-400/15 text-sky-300" },
+  both: { label: "Хоёулаа", tone: "bg-[#ff3d56]/15 text-[#ff7a8c]" },
+};
+
+function SignupBadge({ channel }: { channel: SignupChannel | null }) {
+  if (!channel) return <span className="text-zinc-600">—</span>;
+  const meta = signupMeta[channel];
+  return <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${meta.tone}`}>{meta.label}</span>;
+}
+
 function remainingTone(days: number) {
   if (days <= 0) return "text-zinc-500";
   if (days <= 3) return "text-amber-400";
@@ -1412,13 +1440,19 @@ function ConfirmModal({ title, body, confirmLabel, busy, onCancel, onConfirm }: 
 function UsersAdmin({ users, payments, content, onUsers, notify }: { users: AppUser[]; payments: Payment[]; content: SeriesWithEpisodes[]; onUsers: (update: (users: AppUser[]) => AppUser[]) => void; notify: (message: string) => void }) {
   const [query, setQuery] = useState("");
   const [filter, setFilter] = useState("Бүгд");
+  const [channel, setChannel] = useState<SignupChannel | "">("");
   const [adding, setAdding] = useState(false);
   const [email, setEmail] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingPause, setPendingPause] = useState<AppUser | null>(null);
   const [busy, setBusy] = useState(false);
-  const visible = users.filter((user) => `${user.displayName || ""} ${user.email || ""} ${user.phone || ""}`.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter));
-  const list = usePaged(visible, `${query}|${filter}`);
+  const counts = { email: 0, phone: 0, both: 0 };
+  for (const user of users) {
+    const kind = signupChannel(user);
+    if (kind) counts[kind] += 1;
+  }
+  const visible = users.filter((user) => `${user.displayName || ""} ${user.email || ""} ${user.phone || ""}`.toLowerCase().includes(query.toLowerCase()) && (filter === "Бүгд" || user.plan === filter) && (!channel || signupChannel(user) === channel));
+  const list = usePaged(visible, `${query}|${filter}|${channel}`);
   const selected = users.find((user) => user.uid === selectedId) ?? null;
   const updateUser = async (uid: string, patch: Partial<AppUser>) => {
     try {
@@ -1457,28 +1491,45 @@ function UsersAdmin({ users, payments, content, onUsers, notify }: { users: AppU
         </div>
         <button onClick={() => setAdding(true)} className="flex items-center gap-2 rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black"><Icon name="plus" className="h-4 w-4" />Хэрэглэгч нэмэх</button>
       </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {(["email", "phone", "both"] as const).map((kind) => {
+          const meta = signupMeta[kind];
+          const active = channel === kind;
+          return (
+            <button key={kind} type="button" onClick={() => setChannel(active ? "" : kind)} className={`rounded-2xl border px-5 py-4 text-left transition ${active ? "border-white/30 bg-white/[.06]" : "border-white/[.07] bg-[#141419] hover:border-white/20"}`}>
+              <span className={`inline-flex rounded-full px-2.5 py-1 text-[10px] font-black ${meta.tone}`}>{meta.label}</span>
+              <p className="mt-3 text-2xl font-black">{counts[kind].toLocaleString("mn-MN")}</p>
+              <p className="mt-1 text-[11px] text-zinc-600">{kind === "email" ? "Зөвхөн и-мэйлээр бүртгүүлсэн" : kind === "phone" ? "Зөвхөн утсаар бүртгүүлсэн" : "И-мэйл, утас хоёулаа бүртгэлтэй"}</p>
+            </button>
+          );
+        })}
+      </div>
       <div className="mt-6 flex flex-col gap-3 sm:flex-row">
         <label className="flex h-11 flex-1 items-center gap-2 rounded-xl border border-white/10 bg-[#141419] px-4">
           <Icon name="search" className="h-4 w-4 text-zinc-600" />
           <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Нэр, email эсвэл утас..." className="w-full bg-transparent text-sm outline-none" />
         </label>
         <select value={filter} onChange={(e) => setFilter(e.target.value)} className="rounded-xl border border-white/10 bg-[#141419] px-4 text-xs font-bold"><option>Бүгд</option><option>Plus</option><option>Үндсэн</option></select>
+        {channel && <button type="button" onClick={() => setChannel("")} className="rounded-xl border border-white/10 px-4 text-xs font-bold text-zinc-400 hover:text-white">Шүүлт арилгах</button>}
       </div>
       <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
-        <table className="w-full min-w-[920px] text-left text-xs">
-          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ЭРХ", "ҮЛДСЭН ХОНОГ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
+        <table className="w-full min-w-[1040px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "БҮРТГЭЛ", "ЭРХ", "ҮЛДСЭН ХОНОГ", "БҮРТГҮҮЛСЭН", "ТӨЛӨВ", "ҮЙЛДЭЛ"].map((heading) => <th key={heading} className="px-5 py-4">{heading}</th>)}</tr></thead>
           <tbody>
             {list.rows.map((user) => {
               const left = user.plan === "Plus" ? daysRemaining(user.subscriptionExpiresAt) : null;
-              const contact = user.email || (user.phone ? formatPhone(user.phone) : "");
+              const { email: contactEmail, phone: contactPhone } = userContacts(user);
+              const title = user.displayName || contactEmail || contactPhone || "—";
               return (
               <tr key={user.uid} className="border-b border-white/[.05] last:border-0">
                 <td className="px-5 py-5">
                   <button onClick={() => setSelectedId(user.uid)} className="text-left hover:underline">
-                    <span className="font-bold">{user.displayName || contact || "—"}</span>
-                    {user.displayName && contact && <small className="mt-1 block font-medium text-zinc-600">{contact}</small>}
+                    <span className="font-bold">{title}</span>
+                    {contactEmail && contactEmail !== title && <small className="mt-1 block font-medium text-zinc-600">{contactEmail}</small>}
+                    {contactPhone && contactPhone !== title && <small className="mt-0.5 block font-medium text-zinc-600">{contactPhone}</small>}
                   </button>
                 </td>
+                <td className="px-5"><SignupBadge channel={signupChannel(user)} /></td>
                 <td className="px-5">
                   <select value={user.plan} onChange={(e) => updateUser(user.uid, { plan: e.target.value as AppUser["plan"] })} className="rounded-lg bg-white/[.05] px-2 py-1 outline-none"><option>Үндсэн</option><option>Plus</option></select>
                 </td>
@@ -1528,7 +1579,9 @@ function UserDetail({ user, payments, content, onClose, onUpdate, onStatus }: { 
   const history = userPayments(user, payments);
   const spent = history.filter((payment) => payment.status === "Амжилттай").reduce((sum, payment) => sum + payment.amount, 0);
   const left = user.plan === "Plus" ? daysRemaining(user.subscriptionExpiresAt) : null;
-  const contact = user.email || (user.phone ? formatPhone(user.phone) : "");
+  const { email: contactEmail, phone: contactPhone } = userContacts(user);
+  const contact = contactEmail || contactPhone;
+  const channel = signupChannel(user);
   const owned = new Map<string, { id: string; title: string; date: string; amount: number }>();
   for (const payment of history) {
     if (payment.status !== "Амжилттай" || !payment.seriesId || owned.has(payment.seriesId)) continue;
@@ -1546,11 +1599,15 @@ function UserDetail({ user, payments, content, onClose, onUpdate, onStatus }: { 
           )}
           <div>
             <h2 className="text-2xl font-black">{user.displayName || contact || "Хэрэглэгч"}</h2>
-            <p className={`mt-1 text-xs font-bold ${user.status === "Идэвхтэй" ? "text-emerald-400" : "text-amber-400"}`}>{user.plan} · {user.status}</p>
+            <p className="mt-1 flex flex-wrap items-center gap-2">
+              <span className={`text-xs font-bold ${user.status === "Идэвхтэй" ? "text-emerald-400" : "text-amber-400"}`}>{user.plan} · {user.status}</span>
+              <SignupBadge channel={channel} />
+            </p>
           </div>
         </div>
         <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           <DetailFact label="Нэр">{user.displayName}</DetailFact>
+          <DetailFact label="Бүртгэл">{channel ? signupMeta[channel].label : ""}</DetailFact>
           <DetailFact label="Email">{user.email}</DetailFact>
           <DetailFact label="Утас">{user.phone ? formatPhone(user.phone) : ""}</DetailFact>
           <DetailFact label="Эрх">{user.plan}</DetailFact>

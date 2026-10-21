@@ -294,7 +294,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
             )}
             {url && watermark ? (
               <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center select-none" aria-hidden="true">
-                <p className="absolute left-1/2 top-[70%] max-w-[78%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-line text-center text-[13px] font-bold leading-snug tracking-wide text-white/15 [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]">{watermark}</p>
+                <p className="absolute left-1/2 top-[65%] max-w-[78%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-line text-center text-[13px] font-bold leading-snug tracking-wide text-white/10 [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]">{watermark}</p>
               </div>
             ) : null}
           </div>
