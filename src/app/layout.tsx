@@ -6,8 +6,12 @@ import { MetaPixel } from "@/components/meta-pixel";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "CinemaFeel",
+  title: "Контентоо бүтээ. Орлогоо нэм.",
   description: "Богино түүх, том мэдрэмж.",
+  icons: {
+    icon: [{ url: "/favicon.png", type: "image/png", sizes: "192x192" }],
+    apple: [{ url: "/apple-touch-icon.png", type: "image/png", sizes: "180x180" }],
+  },
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
