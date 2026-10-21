@@ -17,6 +17,7 @@ import { JoinModal } from "./join-modal";
 import { CheckoutModal } from "./checkout-modal";
 import { FilmModal } from "./film-modal";
 import { animate } from "animejs";
+import { CinemaIntro } from "./cinema-intro";
 import { Icon, Logo } from "./icons";
 import { PageMotion, prefersReducedMotion, useChromeMotion } from "./motion";
 
@@ -278,6 +279,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SiteContext.Provider value={value}>
+      {!pathname.startsWith("/c/") && <CinemaIntro />}
       <main ref={rootRef} data-site-root className="min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0">
         <PageMotion />
         <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
