@@ -1,15 +1,39 @@
 "use client";
 
-import { useEffect, useState, type AnimationEvent } from "react";
+import { useEffect, useLayoutEffect, useState, type AnimationEvent } from "react";
 
 const EXIT = "cinema-intro-exit";
+const SEEN_KEY = "cinemafeel-intro";
+
+function introSeen() {
+  try {
+    return sessionStorage.getItem(SEEN_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function markIntroSeen() {
+  try {
+    sessionStorage.setItem(SEEN_KEY, "1");
+  } catch {
+    // Private mode can block storage. The intro still plays this once.
+  }
+}
 
 export function CinemaIntro() {
+  const [show, setShow] = useState(false);
   const [leaving, setLeaving] = useState(false);
   const [done, setDone] = useState(false);
 
+  useLayoutEffect(() => {
+    if (introSeen()) return;
+    markIntroSeen();
+    setShow(true);
+  }, []);
+
   useEffect(() => {
-    if (done) return;
+    if (!show || done) return;
     const root = document.documentElement;
     const previous = root.style.overflow;
     root.style.overflow = "hidden";
@@ -18,14 +42,14 @@ export function CinemaIntro() {
       root.style.overflow = previous;
       window.clearTimeout(backup);
     };
-  }, [done]);
+  }, [show, done]);
 
   const finish = (event: AnimationEvent<HTMLDivElement>) => {
     if (event.target !== event.currentTarget || event.animationName !== EXIT) return;
     setDone(true);
   };
 
-  if (done) return null;
+  if (!show || done) return null;
 
   return (
     <div className={leaving ? "cinema-intro cinema-intro--leave" : "cinema-intro"} role="dialog" aria-modal="true" aria-label="CinemaFeel" onAnimationEnd={finish}>
