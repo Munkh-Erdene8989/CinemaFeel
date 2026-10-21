@@ -1,26 +1,21 @@
 import type { Metadata } from "next";
 import { WatchView } from "@/components/watch-view";
-import { adminDb } from "@/lib/firebase-admin";
 import { isMature } from "@/lib/mature";
+import { readSeries } from "@/lib/public-series";
 
-export const revalidate = 60;
+export const revalidate = 300;
+export const preferredRegion = "icn1";
 
 type Props = { params: Promise<{ seriesId: string; episode: string }> };
 
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { seriesId } = await params;
-  let snap;
-  try {
-    snap = await adminDb().collection("series").doc(seriesId).get();
-  } catch {
-    return { title: "CinemaFeel" };
-  }
-  if (!snap.exists) return { title: "CinemaFeel" };
-  const data = snap.data() ?? {};
-  if (isMature(data)) return { title: "CinemaFeel", description: "Насанд хүрэгчдэд зориулсан контент." };
-  const title = String(data.title || "CinemaFeel");
-  const description = String(data.description || "");
-  const image = String(data.cover || data.image || "");
+  const series = await readSeries(seriesId);
+  if (!series) return { title: "CinemaFeel" };
+  if (isMature(series)) return { title: "CinemaFeel", description: "Насанд хүрэгчдэд зориулсан контент." };
+  const title = series.title || "CinemaFeel";
+  const description = series.description || "";
+  const image = series.cover || series.image || "";
   return {
     title,
     description,
@@ -34,5 +29,7 @@ export async function generateMetadata({ params }: Props): Promise<Metadata> {
 
 export default async function WatchPage({ params }: Props) {
   const { seriesId, episode } = await params;
-  return <WatchView seriesId={seriesId} episodeNumber={Number(episode) || 1} />;
+  const series = await readSeries(seriesId);
+  const initialFilm = series && series.status === "Нийтлэгдсэн" && !isMature(series) ? series : null;
+  return <WatchView seriesId={seriesId} episodeNumber={Number(episode) || 1} initialFilm={initialFilm} />;
 }

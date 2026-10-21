@@ -5,6 +5,7 @@ import { animate } from "animejs";
 import type { Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon } from "./icons";
+import { MediaImage } from "./media-image";
 import { prefersReducedMotion } from "./motion";
 
 function canHover() {
@@ -23,7 +24,7 @@ export function FilmCard({ film, owned, onClick, delay = 0 }: { film: Series; ow
   return (
     <button data-rise data-delay={String(delay)} onClick={onClick} onMouseEnter={(event) => hover(event, true)} onMouseLeave={(event) => hover(event, false)} className="group min-w-0 text-left">
       <div className="relative aspect-[3/4.1] overflow-hidden rounded-xl bg-zinc-900 sm:rounded-2xl">
-        {film.image ? <img src={film.image} alt={`${film.title} постер`} className="h-full w-full origin-center object-cover motion-reduce:transition motion-reduce:duration-700 motion-reduce:group-hover:scale-105" /> : null}
+        {film.image ? <MediaImage src={film.image} alt={`${film.title} постер`} fill sizes="(min-width: 1024px) 15vw, 33vw" className="origin-center object-cover motion-reduce:transition motion-reduce:duration-700 motion-reduce:group-hover:scale-105" /> : null}
         <div className="absolute inset-0 bg-gradient-to-t from-black/90 via-transparent to-transparent" />
         <span className={`absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] truncate rounded-full px-1.5 py-0.5 text-[8px] font-black backdrop-blur-md sm:left-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-[10px] ${film.access === "free" ? "bg-emerald-400 text-black" : "bg-black/55 text-white"}`}>
           {owned ? "АВСАН" : film.access === "free" ? "ҮНЭГҮЙ" : formatMoney(film.price)}

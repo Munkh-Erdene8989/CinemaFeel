@@ -12,6 +12,7 @@ import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { playbackMark } from "@/lib/playback-mark";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
+import { MediaImage } from "./media-image";
 import { EmailPromptModal } from "./email-prompt-modal";
 import { Icon } from "./icons";
 import { MatureGate, useMatureConsent } from "./mature-gate";
@@ -22,11 +23,12 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
   return !String(email || "").includes("@") && Boolean(String(phone || "").trim());
 }
 
-export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episodeNumber: number }) {
+export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { seriesId: string; episodeNumber: number; initialFilm?: Series | null }) {
   const router = useRouter();
   const { series, user, profile, owned, subscribed, openAuth, openFilm, beginCheckout, ready, homeHref } = useSite();
   const { allowed, allow } = useMatureConsent();
-  const film = series.find((item) => item.id === seriesId) ?? null;
+  const fromCatalog = series.find((item) => item.id === seriesId) ?? null;
+  const film = ready ? fromCatalog : (fromCatalog ?? initialFilm);
   const matureLocked = Boolean(film && isMature(film) && allowed !== true);
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [episodesReady, setEpisodesReady] = useState(false);
@@ -206,7 +208,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
   const previousEpisode = episodeIndex > 0 ? episodes[episodeIndex - 1] : null;
   const nextEpisode = episodeIndex >= 0 && episodeIndex < episodes.length - 1 ? episodes[episodeIndex + 1] : null;
 
-  if (!ready || (film && isMature(film) && allowed === null)) return <WatchSkeleton />;
+  if ((!film && !ready) || (film && isMature(film) && allowed === null)) return <WatchSkeleton />;
 
   if (film && isMature(film) && !allowed) {
     return (
@@ -256,6 +258,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               <video
                 key={current?.id}
                 src={url}
+                poster={film.image || undefined}
                 controls
                 controlsList="nodownload"
                 disablePictureInPicture
@@ -273,7 +276,7 @@ export function WatchView({ seriesId, episodeNumber }: { seriesId: string; episo
               />
             ) : (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
-                {film?.image && !loading && <img src={film.image} alt="" className="absolute inset-0 h-full w-full object-cover opacity-40" />}
+                {film.image ? <MediaImage src={film.image} alt="" fill priority sizes="(min-width: 1024px) 420px, 92vw" className="object-cover opacity-40" /> : null}
                 <div className="relative">
                   {loading ? <p ref={loadingRef}>Ачааллаж байна...</p> : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !entitled ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
                   {needsAuth && (
