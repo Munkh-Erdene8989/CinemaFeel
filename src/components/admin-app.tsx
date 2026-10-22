@@ -4,11 +4,12 @@ import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useSta
 import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Expense, ExpenseCategory, ExpenseFrequency, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
 import { CREATOR_FEE, defaultSettings, expenseCategories, expenseIntervals } from "@/lib/types";
-import { currentExpenseMonth, expenseFrequencyLabel, EXPENSE_RECEIPT_LIMIT } from "@/lib/expenses";
+import { currentExpenseMonth, expenseCategoryTotals, expenseFrequencyLabel, EXPENSE_RECEIPT_LIMIT } from "@/lib/expenses";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
 import { playableMp4 } from "@/lib/mp4-faststart";
+import { bandWeight, type ActivityReport, type ActivityViewer, type ActivityWindowDays } from "@/lib/activity";
 import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import type { SalaryLine, SalaryReport } from "@/lib/salary";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
@@ -161,6 +162,9 @@ export function AdminApp() {
   const [lessonsReady, setLessonsReady] = useState(false);
   const [salary, setSalary] = useState<SalaryReport | null>(null);
   const [salaryReady, setSalaryReady] = useState(false);
+  const [activity, setActivity] = useState<ActivityReport | null>(null);
+  const [activityReady, setActivityReady] = useState(false);
+  const [activityError, setActivityError] = useState("");
   const usersFull = useRef(false);
   const paymentsFull = useRef(false);
   const lessonsFull = useRef(false);
@@ -177,7 +181,7 @@ export function AdminApp() {
   const [guideError, setGuideError] = useState("");
   const superAdmin = session?.role === "super";
   const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Зардал", "card"], ["Цалин", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
+    ? [["Хяналтын самбар", "chart"], ["Идэвх", "spark"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Зардал", "card"], ["Цалин", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
     : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Цалин", "card"]];
 
   const notify = (message: string) => {
@@ -350,6 +354,27 @@ export function AdminApp() {
   }, [ready, section, session?.role]);
 
   useEffect(() => {
+    if (!ready || session?.role !== "super") return;
+    if (section !== "Хяналтын самбар" && section !== "Идэвх") return;
+    if (activity || activityReady) return;
+    let ignore = false;
+    adminFetch<ActivityReport>("/api/admin/activity")
+      .then((data) => {
+        if (ignore) return;
+        setActivity(data);
+        setActivityReady(true);
+      })
+      .catch((error: Error) => {
+        if (ignore) return;
+        setActivityReady(true);
+        setActivityError(error.message || "Идэвхийг ачаалж чадсангүй.");
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [ready, section, session?.role, activity, activityReady]);
+
+  useEffect(() => {
     if (!ready || section !== "Цалин") return;
     let ignore = false;
     adminFetch<SalaryReport>("/api/admin/salary")
@@ -393,10 +418,10 @@ export function AdminApp() {
   return (
     <AdminPageSizeContext.Provider value={{ pageSize, setPageSize }}>
     <div className="min-h-screen bg-[#0c0c0f] text-white">
-      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 border-r border-white/[.07] bg-[#101014] p-5 lg:block">
+      <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-white/[.07] bg-[#101014] p-5 lg:flex">
         <Logo href="/" />
         <p className="mt-9 px-3 text-[10px] font-black uppercase tracking-[.2em] text-zinc-600">Удирдлага</p>
-        <nav className="mt-3 space-y-1">
+        <nav className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
           {menu.map(([label, icon]) => (
             <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>
               <Icon name={icon} className="h-4 w-4" />
@@ -404,7 +429,7 @@ export function AdminApp() {
             </button>
           ))}
         </nav>
-        <a href={siteUsername && !superAdmin ? `/c/${siteUsername}` : "/"} className="absolute bottom-6 left-5 right-5 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-zinc-500 hover:text-white">
+        <a href={siteUsername && !superAdmin ? `/c/${siteUsername}` : "/"} className="mt-3 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-zinc-500 hover:text-white">
           <Icon name="logout" className="h-4 w-4" />
           {siteUsername && !superAdmin ? "Миний сайт" : "Сайт руу буцах"}
         </a>
@@ -427,7 +452,8 @@ export function AdminApp() {
               <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
             ))}
           </div>
-          {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} />}
+          {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} activity={activity} activityError={activityError} onActivity={() => setSection("Идэвх")} onExpenses={() => setSection("Зардал")} />}
+          {section === "Идэвх" && superAdmin && <ActivityAdmin report={activity} ready={activityReady} error={activityError} content={content} />}
           {section === "Хяналтын самбар" && session && !superAdmin && <AdminHome content={content} mine={revenue?.admins[0]} days={revenueDays} inviteCode={inviteCode} username={siteUsername} cornerName={cornerName} cornerEdits={cornerEdits} onCorner={(name, edits) => { setCornerName(name); setCornerEdits(edits); }} notify={notify} />}
           {section === "Контент" && <ContentAdmin content={content} genres={settings.genres} showOwner={superAdmin} canManageGenres={superAdmin} refreshSeries={refreshSeries} onGenres={(genres) => setSettings((current) => ({ ...current, genres }))} onStatus={async (film) => {
             const status = film.status === "Нийтлэгдсэн" ? "Ноорог" : "Нийтлэгдсэн";
@@ -619,6 +645,18 @@ function chartMoney(amount: number) {
   return `₮${Math.round(amount).toLocaleString("mn-MN")}`;
 }
 
+function dashMoney(amount: number) {
+  const rounded = Math.round(amount);
+  const text = Math.abs(rounded).toLocaleString("mn-MN");
+  return rounded < 0 ? `-₮${text}` : `₮${text}`;
+}
+
+function localDateKey(time: number) {
+  const date = new Date(time);
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 function salesInRange(payments: Payment[], start: number, end: number) {
   let amount = 0;
   let count = 0;
@@ -682,14 +720,25 @@ function SalesChart({ title, hint, total, buckets, labelEvery }: { title: string
   );
 }
 
-function Dashboard({ content, users, payments, userCount }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[]; userCount: number }) {
+function Dashboard({ content, users, payments, userCount, activity, activityError, onActivity, onExpenses }: { content: SeriesWithEpisodes[]; users: AppUser[]; payments: Payment[]; userCount: number; activity: ActivityReport | null; activityError: string; onActivity: () => void; onExpenses: () => void }) {
   const [range, setRange] = useState("7");
   const [hourDay, setHourDay] = useState(() => startOfLocalDay(Date.now()));
+  const [expenses, setExpenses] = useState<Expense[] | null>(null);
+  const [expenseError, setExpenseError] = useState("");
   const days = Number(range);
   const now = Date.now();
   const since = now - days * CHART_DAY;
   const recent = payments.filter((payment) => payment.createdAt >= since && payment.status === "Амжилттай");
   const revenue = recent.reduce((sum, payment) => sum + payment.amount, 0);
+  const sinceKey = localDateKey(since);
+  const todayKey = localDateKey(now);
+  const windowExpenses = (expenses ?? []).filter((item) => item.spentOn >= sinceKey && item.spentOn <= todayKey);
+  const expenseTotal = windowExpenses.reduce((sum, item) => sum + item.amount, 0);
+  const profitReady = expenses !== null && !expenseError;
+  const profit = revenue - expenseTotal;
+  const categories = expenseCategoryTotals(windowExpenses);
+  const categoryMax = Math.max(...categories.map((item) => item.total), 1);
+  const latestExpenses = windowExpenses.slice().sort((a, b) => b.spentOn.localeCompare(a.spentOn) || b.createdAt - a.createdAt).slice(0, 5);
   const daysChart = daySales(recent, since, now);
   const selectedDay = daysChart.some((bucket) => bucket.start === hourDay) ? hourDay : (daysChart.at(-1)?.start ?? startOfLocalDay(now));
   const hoursChart = hourSales(recent, selectedDay);
@@ -705,12 +754,32 @@ function Dashboard({ content, users, payments, userCount }: { content: SeriesWit
     });
   const activeMonthly = users.filter((user) => subscriptionActive(user)).length;
   const monthlyPage = usePaged(monthly, range);
+  const finance = [
+    ["Нийт орлого", dashMoney(revenue), `${recent.length} гүйлгээ`, "chart", "text-white"],
+    ["Зардал", profitReady ? dashMoney(expenseTotal) : expenseError ? "—" : "…", expenseError || (profitReady ? `${windowExpenses.length} бүртгэл` : "Ачааллаж байна"), "card", "text-[#ff6679]"],
+    ["Ашиг", profitReady ? dashMoney(profit) : expenseError ? "—" : "…", "орлого − зардал", "spark", profitReady && profit < 0 ? "text-[#ff6679]" : "text-emerald-400"],
+  ] as const;
   const stats = [
-    ["Нийт орлого", `₮${Math.round(revenue).toLocaleString("mn-MN")}`, `${recent.length} гүйлгээ`, "chart"],
     ["Идэвхтэй эрх", activeMonthly.toString(), `${userCount} хэрэглэгч`, "users"],
     ["Нийт үзэлт", formatViews(content.reduce((sum, film) => sum + film.views, 0)), "бодит тоолуур", "play"],
     ["Контент", content.length.toString(), `${content.filter((film) => film.status === "Нийтлэгдсэн").length} нийтлэгдсэн`, "film"],
   ];
+
+  useEffect(() => {
+    let active = true;
+    adminFetch<{ expenses: Expense[] }>("/api/admin/expenses?month=all")
+      .then((data) => {
+        if (active) setExpenses(data.expenses);
+      })
+      .catch((error: Error) => {
+        if (!active) return;
+        setExpenseError(error.message || "Зардлыг ачаалж чадсангүй.");
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
   return (
     <>
       <div className="mb-5 flex items-center justify-between">
@@ -724,7 +793,19 @@ function Dashboard({ content, users, payments, userCount }: { content: SeriesWit
           <option value="90">90 хоног</option>
         </select>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-3">
+        {finance.map(([label, value, change, icon, tone]) => (
+          <div key={label} className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-zinc-500">{label}</span>
+              <Icon name={icon} className="h-4 w-4 text-zinc-600" />
+            </div>
+            <p className={`mt-5 text-2xl font-black ${tone}`}>{value}</p>
+            <p className="mt-2 text-xs font-bold text-zinc-500">{change}</p>
+          </div>
+        ))}
+      </div>
+      <div className="mt-4 grid gap-4 sm:grid-cols-3">
         {stats.map(([label, value, change, icon]) => (
           <div key={label} className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
             <div className="flex items-center justify-between">
@@ -736,6 +817,57 @@ function Dashboard({ content, users, payments, userCount }: { content: SeriesWit
           </div>
         ))}
       </div>
+      <div className="mt-5 grid gap-5 xl:grid-cols-2">
+        <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <div className="flex items-center justify-between gap-4">
+            <div>
+              <h2 className="font-black">Зардал</h2>
+              <p className="mt-1 text-xs text-zinc-600">Сүүлийн {range} хоногийн ангилал</p>
+            </div>
+            <button type="button" onClick={onExpenses} className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-black">Зардал</button>
+          </div>
+          <div className="mt-5 space-y-4">
+            {categories.map((item) => (
+              <div key={item.category}>
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-bold">{item.category}</span>
+                  <span className="font-black text-[#ff6679]">{dashMoney(item.total)}</span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-white/[.06]">
+                  <div className="h-full rounded-full bg-[#ff536a]" style={{ width: `${Math.max(8, (item.total / categoryMax) * 100)}%` }} />
+                </div>
+              </div>
+            ))}
+            {profitReady && !categories.length && <p className="text-sm text-zinc-600">Энэ хугацаанд зардал алга.</p>}
+            {!profitReady && <p className="text-sm text-zinc-600">{expenseError || "Ачааллаж байна..."}</p>}
+          </div>
+        </div>
+        <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <h2 className="font-black">Сүүлийн зардал</h2>
+          <p className="mt-1 text-xs text-zinc-600">Сонгосон хугацааны сүүлийн 5 бүртгэл</p>
+          <div className="mt-4 divide-y divide-white/[.05]">
+            {latestExpenses.map((expense) => (
+              <div key={expense.id} className="flex items-center gap-4 py-3">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-bold">{expense.title}</p>
+                  <p className="mt-1 text-[10px] text-zinc-600">{spentLabel(expense.spentOn)} · {expense.category}</p>
+                </div>
+                <span className="ml-auto shrink-0 text-xs font-bold text-[#ff6679]">{dashMoney(expense.amount)}</span>
+              </div>
+            ))}
+            {profitReady && !latestExpenses.length && <p className="py-3 text-sm text-zinc-600">Энэ хугацаанд зардал алга.</p>}
+            {!profitReady && <p className="py-3 text-sm text-zinc-600">{expenseError || "Ачааллаж байна..."}</p>}
+          </div>
+        </div>
+      </div>
+      <button type="button" onClick={onActivity} className="mt-5 flex w-full items-center justify-between gap-4 rounded-2xl border border-white/[.07] bg-[#141419] p-5 text-left hover:border-white/20">
+        <div>
+          <p className="text-xs font-bold text-zinc-500">30 хоногийн боломжит орлого</p>
+          <p className="mt-3 text-2xl font-black">{activity ? formatMoney(activity.windows[30].totals.base) : activityError ? "—" : "Тооцоолж байна"}</p>
+          <p className="mt-2 text-xs font-bold text-zinc-500">{activity ? `Бага ${formatMoney(activity.windows[30].totals.low)} · Өндөр ${formatMoney(activity.windows[30].totals.high)}` : "Идэвх цэс дээрх суурь таамаг"}</p>
+        </div>
+        <span className="shrink-0 rounded-full bg-white px-4 py-2 text-xs font-extrabold text-black">Идэвх</span>
+      </button>
       <div className="mt-5 grid gap-5 xl:grid-cols-[1.6fr_1fr]">
         <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
           <div className="flex flex-wrap items-start justify-between gap-3">
@@ -799,6 +931,169 @@ function Dashboard({ content, users, payments, userCount }: { content: SeriesWit
         <TablePager pager={monthlyPage} />
       </div>
     </>
+  );
+}
+
+const activityGroups = [
+  ["recent", "Сүүлийн 7 хоногт үзсэн", "Ямар нэг контент нээсэн"],
+  ["dormant", "Багцтай, үзээгүй", "14 хоногоос илүү үзэлт алга"],
+  ["prospects", "Багцгүй үзэгч", "2 ба түүнээс олон контент"],
+  ["expiring", "7 хоногт дуусах", "Идэвхтэй багцын эрх"],
+] as const;
+
+function activityName(viewer: ActivityViewer) {
+  return viewer.name || viewer.email || (viewer.phone ? formatPhone(viewer.phone) : "Хэрэглэгч");
+}
+
+function activityPercent(weight: number) {
+  const value = Math.round(weight * 1000) / 10;
+  return `${value}%`;
+}
+
+function activityPackage(viewer: ActivityViewer) {
+  if (viewer.packageMode === "weekly") return "7 хоног";
+  if (viewer.packageMode === "subscription") return "Plus";
+  return "Байхгүй";
+}
+
+function ActivityAdmin({ report, ready, error, content }: { report: ActivityReport | null; ready: boolean; error: string; content: SeriesWithEpisodes[] }) {
+  const [days, setDays] = useState<ActivityWindowDays>(30);
+  const [group, setGroup] = useState<(typeof activityGroups)[number][0] | "">("");
+  const [selected, setSelected] = useState<ActivityViewer | null>(null);
+  const titles = useMemo(() => new Map(content.map((film) => [film.id, film.title])), [content]);
+  const current = report?.windows[days];
+  const renewalPage = usePaged(current?.renewal ?? [], `${days}-renewal`);
+  const acquisitionPage = usePaged(current?.acquisition ?? [], `${days}-new`);
+  const groupRows = group && report ? report.groups[group] : [];
+  const groupPage = usePaged(groupRows, group);
+  if (!ready) return <p className="text-sm text-zinc-500">Ачааллаж байна...</p>;
+  if (!report) return <p className="text-sm text-zinc-500">{error || "Идэвхийг ачаалж чадсангүй."}</p>;
+  return (
+    <div>
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div>
+          <h2 className="text-2xl font-black">Идэвх ба боломжит орлого</h2>
+          <p className="mt-1 max-w-2xl text-sm text-zinc-600">Хэрэглэгч хэдэн өөр контент үзсэн, багцаа сунгах эсэхээс гарсан таамаг. Орлого цэс бодит төлбөрөө харуулна.</p>
+        </div>
+        <div className="flex rounded-xl border border-white/10 p-1">
+          {([7, 30] as const).map((windowDays) => (
+            <button key={windowDays} type="button" onClick={() => setDays(windowDays)} className={`rounded-lg px-4 py-2 text-xs font-bold ${days === windowDays ? "bg-white text-black" : "text-zinc-500"}`}>{windowDays} хоног</button>
+          ))}
+        </div>
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        {activityGroups.map(([key, label, hint]) => {
+          const active = group === key;
+          return (
+            <button key={key} type="button" onClick={() => setGroup(active ? "" : key)} className={`rounded-2xl border px-5 py-4 text-left ${active ? "border-white/30 bg-white/[.06]" : "border-white/[.07] bg-[#141419] hover:border-white/20"}`}>
+              <p className="text-xs font-bold text-zinc-500">{label}</p>
+              <p className="mt-3 text-2xl font-black">{report.groups[key].length.toLocaleString("mn-MN")}</p>
+              <p className="mt-1 text-[11px] text-zinc-600">{hint}</p>
+            </button>
+          );
+        })}
+      </div>
+      <div className="mt-5 grid gap-3 sm:grid-cols-3">
+        {([
+          ["Бага", report.windows[days].totals.low],
+          ["Суурь", report.windows[days].totals.base],
+          ["Өндөр", report.windows[days].totals.high],
+        ] as const).map(([label, amount]) => (
+          <div key={label} className={`rounded-2xl border px-5 py-4 ${label === "Суурь" ? "border-white/20 bg-white/[.06]" : "border-white/[.07] bg-[#141419]"}`}>
+            <p className="text-xs font-bold text-zinc-500">{label}</p>
+            <p className="mt-3 text-2xl font-black">{formatMoney(amount)}</p>
+            <p className="mt-1 text-[11px] text-zinc-600">{days} хоногийн боломжит орлого</p>
+          </div>
+        ))}
+      </div>
+      <p className="mt-4 text-xs leading-5 text-zinc-600">Сунгалт нь {days} хоногт дуусах багц бөгөөд үнэ нь сүүлийн төлбөр. Шинэ багц нь багцгүй, {days} хоногт үзсэн, 2 ба түүнээс олон контент үзсэн хүн, үнэ {formatMoney(report.weeklyPrice)}. Суурь жин: өндөр {activityPercent(bandWeight.high)}, дунд {activityPercent(bandWeight.mid)}, бага {activityPercent(bandWeight.low)}. Шинэ багц энэ жингийн тал. Бага таамаг суурийн тал, өндөр таамаг суурийн 1.5 дахин, нэг хүнд 90%-иас хэтрэхгүй.</p>
+      {group ? (
+        <ActivityPeople title={activityGroups.find((item) => item[0] === group)?.[1] ?? "Бүлэг"} rows={groupPage.rows} onOpen={setSelected} />
+      ) : (
+        <div className="mt-6 grid gap-5 xl:grid-cols-2">
+          <ActivityForecast title="Сунгалт" rows={renewalPage.rows} empty="Энэ цонхонд дуусах багц алга." onOpen={setSelected} />
+          <ActivityForecast title="Шинэ багц" rows={acquisitionPage.rows} empty="Энэ цонхонд шинэ багц авах үзэгч алга." onOpen={setSelected} />
+        </div>
+      )}
+      {group ? <TablePager pager={groupPage} /> : (
+        <div className="grid gap-5 xl:grid-cols-2">
+          <TablePager pager={renewalPage} />
+          <TablePager pager={acquisitionPage} />
+        </div>
+      )}
+      {selected && (
+        <Modal onClose={() => setSelected(null)} size="lg">
+          <div className="max-h-[85vh] overflow-y-auto p-6 md:p-8">
+            <p className="text-xs font-black uppercase tracking-[.18em] text-[#ff536a]">Үзсэн контент</p>
+            <h2 className="mt-2 pr-10 text-2xl font-black">{activityName(selected)}</h2>
+            <p className="mt-1 text-sm text-zinc-500">{selected.email || (selected.phone ? formatPhone(selected.phone) : "Холбоо барих мэдээлэл алга")}</p>
+            <div className="mt-6 divide-y divide-white/[.06]">
+              {selected.seriesIds.map((id) => <p key={id} className="py-3 text-sm font-bold">{titles.get(id) || "Контент"}</p>)}
+              {!selected.seriesIds.length && <p className="py-6 text-sm text-zinc-600">Үзсэн контент алга.</p>}
+            </div>
+          </div>
+        </Modal>
+      )}
+    </div>
+  );
+}
+
+function ActivityForecast({ title, rows, empty, onOpen }: { title: string; rows: ActivityReport["windows"][30]["renewal"]; empty: string; onOpen: (viewer: ActivityViewer) => void }) {
+  return (
+    <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+      <h2 className="font-black">{title}</h2>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[640px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "ҮЗСЭН", "БҮЛЭГ", "БОЛОМЖИТ"].map((heading) => <th key={heading} className="px-3 py-3">{heading}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.uid} className="border-b border-white/[.05] last:border-0">
+                <td className="px-3 py-3">
+                  <button type="button" onClick={() => onOpen(row)} className="text-left hover:underline">
+                    <span className="font-bold">{activityName(row)}</span>
+                    <small className="mt-1 block text-zinc-600">{row.email || (row.phone ? formatPhone(row.phone) : row.reason)}</small>
+                  </button>
+                </td>
+                <td className="px-3 py-3">{row.titles}</td>
+                <td className="px-3 py-3">{row.band === "high" ? "Өндөр" : row.band === "mid" ? "Дунд" : "Бага"} · {activityPercent(row.weight)}</td>
+                <td className="px-3 py-3 font-bold">{formatMoney(row.amount)}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <p className="py-8 text-center text-sm text-zinc-600">{empty}</p>}
+      </div>
+    </div>
+  );
+}
+
+function ActivityPeople({ title, rows, onOpen }: { title: string; rows: ActivityViewer[]; onOpen: (viewer: ActivityViewer) => void }) {
+  return (
+    <div className="mt-6 rounded-2xl border border-white/[.07] bg-[#141419] p-5">
+      <h2 className="font-black">{title}</h2>
+      <div className="mt-4 overflow-x-auto">
+        <table className="w-full min-w-[720px] text-left text-xs">
+          <thead className="border-b border-white/[.07] text-zinc-600"><tr>{["ХЭРЭГЛЭГЧ", "БҮРТГЭСЭН", "ҮЗСЭН", "СҮҮЛИЙН ҮЗЭЛТ", "БАГЦ"].map((heading) => <th key={heading} className="px-3 py-3">{heading}</th>)}</tr></thead>
+          <tbody>
+            {rows.map((row) => (
+              <tr key={row.uid} className="border-b border-white/[.05] last:border-0">
+                <td className="px-3 py-3">
+                  <button type="button" onClick={() => onOpen(row)} className="text-left hover:underline">
+                    <span className="font-bold">{activityName(row)}</span>
+                    {row.email && <small className="mt-1 block text-zinc-600">{row.email}</small>}
+                  </button>
+                </td>
+                <td className="px-3 py-3 text-zinc-400">{row.joined || "—"}</td>
+                <td className="px-3 py-3">{row.titles}</td>
+                <td className="px-3 py-3 text-zinc-400">{row.lastViewAt ? formatDate(row.lastViewAt) : "—"}</td>
+                <td className="px-3 py-3">{activityPackage(row)}{row.expiresAt ? ` · ${formatDate(row.expiresAt)}` : ""}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {!rows.length && <p className="py-8 text-center text-sm text-zinc-600">Энэ бүлэгт хүн алга.</p>}
+      </div>
+    </div>
   );
 }
 
