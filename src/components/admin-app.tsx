@@ -61,6 +61,113 @@ function telegramNote(saved: ReleaseNotice) {
   return parts.join(" ");
 }
 
+type AdminMenuEntry = { label: string; icon: string; superOnly?: boolean };
+
+const adminMenuGroups: { label: string; items: AdminMenuEntry[] }[] = [
+  {
+    label: "Статистик",
+    items: [
+      { label: "Хяналтын самбар", icon: "chart" },
+      { label: "Идэвх", icon: "spark", superOnly: true },
+    ],
+  },
+  {
+    label: "Контент",
+    items: [
+      { label: "Контент", icon: "film" },
+      { label: "Мэдлэг", icon: "play" },
+    ],
+  },
+  {
+    label: "Санхүү",
+    items: [
+      { label: "Орлого", icon: "card" },
+      { label: "Зардал", icon: "card", superOnly: true },
+      { label: "Цалин", icon: "card" },
+      { label: "Төлбөр", icon: "card", superOnly: true },
+      { label: "Хөнгөлөлт", icon: "spark", superOnly: true },
+    ],
+  },
+  {
+    label: "Community",
+    items: [
+      { label: "Хэрэглэгчид", icon: "users", superOnly: true },
+      { label: "Контент бүтээгчид", icon: "users", superOnly: true },
+    ],
+  },
+];
+
+const adminMenuExtras: AdminMenuEntry[] = [
+  { label: "Маркетинг", icon: "mail", superOnly: true },
+  { label: "Тохиргоо", icon: "settings", superOnly: true },
+];
+
+function visibleAdminMenu(superAdmin: boolean) {
+  const allowed = (item: AdminMenuEntry) => superAdmin || !item.superOnly;
+  return {
+    groups: adminMenuGroups
+      .map((group) => ({ label: group.label, items: group.items.filter(allowed) }))
+      .filter((group) => group.items.length > 0),
+    extras: adminMenuExtras.filter(allowed),
+  };
+}
+
+function AdminMenu({
+  groups,
+  extras,
+  section,
+  openGroups,
+  onToggle,
+  onSelect,
+  guideLabel,
+}: {
+  groups: { label: string; items: AdminMenuEntry[] }[];
+  extras: AdminMenuEntry[];
+  section: string;
+  openGroups: string[];
+  onToggle: (label: string) => void;
+  onSelect: (label: string) => void;
+  guideLabel?: string;
+}) {
+  const itemClass = (label: string) => `flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guideLabel === label ? "ring-2 ring-[#ff536a]" : ""}`;
+  return (
+    <div className="space-y-4">
+      {groups.map((group) => {
+        const open = openGroups.includes(group.label);
+        const contains = group.items.some((item) => item.label === section || item.label === guideLabel);
+        return (
+          <div key={group.label}>
+            <button type="button" aria-expanded={open} onClick={() => onToggle(group.label)} className={`flex w-full items-center justify-between px-3 py-1 text-[10px] font-black uppercase tracking-[.2em] ${contains ? "text-white" : "text-zinc-600 hover:text-zinc-300"}`}>
+              {group.label}
+              <Icon name="arrow" className={`h-3 w-3 shrink-0 transition-transform ${open ? "rotate-90" : ""}`} />
+            </button>
+            {open && (
+              <div className="mt-1 space-y-1">
+                {group.items.map((item) => (
+                  <button key={item.label} type="button" onClick={() => onSelect(item.label)} className={itemClass(item.label)}>
+                    <Icon name={item.icon} className="h-4 w-4 shrink-0" />
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        );
+      })}
+      {extras.length > 0 && (
+        <div className="space-y-1 border-t border-white/[.07] pt-3">
+          {extras.map((item) => (
+            <button key={item.label} type="button" onClick={() => onSelect(item.label)} className={itemClass(item.label)}>
+              <Icon name={item.icon} className="h-4 w-4 shrink-0" />
+              {item.label}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function shareHref(code: string) {
   const origin = typeof window === "undefined" ? "" : window.location.origin;
   return `${origin}/s/${code}`;
@@ -179,10 +286,9 @@ export function AdminApp() {
   const [guideMode, setGuideMode] = useState<"full" | "salary">("full");
   const [guideBusy, setGuideBusy] = useState(false);
   const [guideError, setGuideError] = useState("");
+  const [openGroups, setOpenGroups] = useState<string[]>(["Статистик"]);
   const superAdmin = session?.role === "super";
-  const menu = superAdmin
-    ? [["Хяналтын самбар", "chart"], ["Идэвх", "spark"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Зардал", "card"], ["Цалин", "card"], ["Хэрэглэгчид", "users"], ["Төлбөр", "card"], ["Хөнгөлөлт", "spark"], ["Контент бүтээгчид", "users"], ["Маркетинг", "mail"], ["Тохиргоо", "settings"]]
-    : [["Хяналтын самбар", "chart"], ["Контент", "film"], ["Мэдлэг", "play"], ["Орлого", "card"], ["Цалин", "card"]];
+  const { groups: menuGroups, extras: menuExtras } = visibleAdminMenu(superAdmin);
 
   const notify = (message: string) => {
     setNotice(message);
@@ -396,6 +502,22 @@ export function AdminApp() {
   const guiding = guideOpen && !termsOpen;
   const [pageSize, setPageSizeState] = useState<AdminPageSize>(20);
   useEffect(() => setPageSizeState(readAdminPageSize()), []);
+  useEffect(() => {
+    const parent = adminMenuGroups.find((group) => group.items.some((item) => item.label === section))?.label;
+    if (!parent) return;
+    setOpenGroups((current) => (current.includes(parent) ? current : [...current, parent]));
+  }, [section]);
+  const toggleGroup = (label: string) => {
+    setOpenGroups((current) => (current.includes(label) ? current.filter((item) => item !== label) : [...current, label]));
+  };
+  const selectSection = (label: string) => {
+    if (guiding) {
+      const index = guideSteps.findIndex((item) => item.section === label);
+      if (index >= 0) showGuideStep(index);
+      return;
+    }
+    setSection(label);
+  };
   const setPageSize = (size: AdminPageSize) => {
     setPageSizeState(size);
     window.localStorage.setItem(adminPageSizeKey, String(size));
@@ -420,14 +542,8 @@ export function AdminApp() {
     <div className="min-h-screen bg-[#0c0c0f] text-white">
       <aside className="fixed inset-y-0 left-0 z-40 hidden w-64 flex-col border-r border-white/[.07] bg-[#101014] p-5 lg:flex">
         <Logo href="/" />
-        <p className="mt-9 px-3 text-[10px] font-black uppercase tracking-[.2em] text-zinc-600">Удирдлага</p>
-        <nav className="mt-3 min-h-0 flex-1 space-y-1 overflow-y-auto">
-          {menu.map(([label, icon]) => (
-            <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold ${section === label ? "bg-white text-black" : "text-zinc-500 hover:bg-white/5 hover:text-white"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>
-              <Icon name={icon} className="h-4 w-4" />
-              {label}
-            </button>
-          ))}
+        <nav className="mt-8 min-h-0 flex-1 overflow-y-auto">
+          <AdminMenu groups={menuGroups} extras={menuExtras} section={section} openGroups={openGroups} onToggle={toggleGroup} onSelect={selectSection} guideLabel={guiding ? guideSteps[guideStep]?.section : undefined} />
         </nav>
         <a href={siteUsername && !superAdmin ? `/c/${siteUsername}` : "/"} className="mt-3 flex items-center gap-3 rounded-xl px-3 py-3 text-sm font-bold text-zinc-500 hover:text-white">
           <Icon name="logout" className="h-4 w-4" />
@@ -447,10 +563,8 @@ export function AdminApp() {
           </div>
         </header>
         <div className={`p-5 md:p-8 ${guiding ? "pb-96" : ""}`}>
-          <div className="scrollbar-none mb-6 flex gap-2 overflow-x-auto lg:hidden">
-            {menu.map(([label]) => (
-              <button key={label} onClick={() => (guiding ? showGuideStep(guideSteps.findIndex((item) => item.section === label)) : setSection(label))} className={`shrink-0 rounded-full px-4 py-2 text-xs font-bold ${section === label ? "bg-white text-black" : "border border-white/10 text-zinc-500"} ${guiding && guideSteps[guideStep]?.section === label ? "ring-2 ring-[#ff536a]" : ""}`}>{label}</button>
-            ))}
+          <div className="mb-6 lg:hidden">
+            <AdminMenu groups={menuGroups} extras={menuExtras} section={section} openGroups={openGroups} onToggle={toggleGroup} onSelect={selectSection} guideLabel={guiding ? guideSteps[guideStep]?.section : undefined} />
           </div>
           {section === "Хяналтын самбар" && superAdmin && <Dashboard content={content} users={users} payments={payments} userCount={usersReady ? users.length : userCount} activity={activity} activityError={activityError} onActivity={() => setSection("Идэвх")} onExpenses={() => setSection("Зардал")} />}
           {section === "Идэвх" && superAdmin && <ActivityAdmin report={activity} ready={activityReady} error={activityError} content={content} />}
