@@ -17,6 +17,7 @@ type YTPlayer = {
   seekTo?: (seconds: number, allowSeekAhead: boolean) => void;
   getCurrentTime?: () => number;
   getDuration?: () => number;
+  getPlayerState?: () => number;
   unloadModule?: (name: string) => void;
   setOption?: (module: string, option: string, value: unknown) => void;
 };
@@ -38,7 +39,7 @@ declare global {
   interface Window {
     YT?: {
       Player: new (element: HTMLElement, options: Record<string, unknown>) => YTPlayer;
-      PlayerState?: { ENDED?: number; PLAYING?: number; PAUSED?: number };
+      PlayerState?: { UNSTARTED?: number; ENDED?: number; PLAYING?: number; PAUSED?: number; BUFFERING?: number; CUED?: number };
     };
     onYouTubeIframeAPIReady?: () => void;
   }
@@ -70,6 +71,7 @@ export function ReelView() {
   const [active, setActive] = useState(0);
   const [muted, setMuted] = useState(false);
   const [paused, setPaused] = useState(false);
+  const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
   const [progress, setProgress] = useState(0);
   const scrollerRef = useRef<HTMLDivElement>(null);
@@ -173,6 +175,8 @@ export function ReelView() {
                 paused={paused}
                 repeat={clips.length === 1}
                 onProgress={setProgress}
+                onPlaying={setPlaying}
+                onSoundBlocked={() => setMuted(true)}
                 onEnded={() => go(index + 1)}
               />
             ) : null}
@@ -185,13 +189,27 @@ export function ReelView() {
                 paused={paused}
                 repeat={clips.length === 1}
                 onProgress={setProgress}
+                onPlaying={setPlaying}
+                onSoundBlocked={() => setMuted(true)}
                 onEnded={() => go(index + 1)}
               />
             ) : null}
             <div className="absolute inset-x-0 bottom-0 z-30 h-1 bg-white/20">
               <div className="h-full bg-[#ff3d56]" style={{ width: `${(index === active ? progress : 0) * 100}%` }} />
             </div>
-            <button type="button" className="absolute inset-0 z-10" aria-label={paused ? "Үргэлжлүүлэх" : "Түр зогсоох"} onClick={() => setPaused((value) => !value)} />
+            <button
+              type="button"
+              className="absolute inset-0 z-10"
+              aria-label={playing && !paused ? "Түр зогсоох" : "Үргэлжлүүлэх"}
+              onClick={() => {
+                if (!playing) {
+                  setPaused(false);
+                  setMuted(false);
+                  return;
+                }
+                setPaused((value) => !value);
+              }}
+            />
             <div className="pointer-events-none absolute inset-x-0 top-0 z-20 flex items-center justify-between p-4">
               <a href="/" className="pointer-events-auto grid h-10 w-10 place-items-center rounded-full bg-black/45 text-white backdrop-blur-md" aria-label="Нүүр">
                 <Icon name="arrow" className="h-5 w-5 rotate-180" />
@@ -233,6 +251,8 @@ function ReelPlayer({
   paused,
   repeat,
   onProgress,
+  onPlaying,
+  onSoundBlocked,
   onEnded,
 }: {
   videoId: string;
@@ -242,6 +262,8 @@ function ReelPlayer({
   paused: boolean;
   repeat: boolean;
   onProgress: (value: number) => void;
+  onPlaying: (value: boolean) => void;
+  onSoundBlocked: () => void;
   onEnded: () => void;
 }) {
   const slotRef = useRef<HTMLDivElement>(null);
@@ -254,13 +276,18 @@ function ReelPlayer({
   const repeatRef = useRef(repeat);
   const onEndedRef = useRef(onEnded);
   const onProgressRef = useRef(onProgress);
+  const onPlayingRef = useRef(onPlaying);
+  const onSoundBlockedRef = useRef(onSoundBlocked);
   const loopingRef = useRef(false);
   const resumeRef = useRef(0);
+  const soundTriedRef = useRef(false);
   mutedRef.current = muted;
   pausedRef.current = paused;
   repeatRef.current = repeat;
   onEndedRef.current = onEnded;
   onProgressRef.current = onProgress;
+  onPlayingRef.current = onPlaying;
+  onSoundBlockedRef.current = onSoundBlocked;
 
   useEffect(() => {
     let cancelled = false;
@@ -268,7 +295,10 @@ function ReelPlayer({
     endedRef.current = false;
     windowRef.current = reelSpan(startAt, seconds);
     loopingRef.current = false;
+    resumeRef.current = 0;
+    soundTriedRef.current = false;
     onProgressRef.current(0);
+    onPlayingRef.current(false);
 
     loadYouTube().then((YT) => {
       if (cancelled || !slotRef.current) return;
@@ -286,7 +316,7 @@ function ReelPlayer({
           playsinline: 1,
           iv_load_policy: 3,
           cc_load_policy: 0,
-          mute: mutedRef.current ? 1 : 0,
+          mute: 1,
           start: Math.max(0, Math.floor(startAt)),
         },
         events: {
@@ -296,9 +326,8 @@ function ReelPlayer({
             const span = reelSpan(startAt, seconds, duration);
             windowRef.current = span;
             readyRef.current = true;
+            event.target.mute?.();
             event.target.seekTo?.(span.start, true);
-            if (mutedRef.current) event.target.mute?.();
-            else event.target.unMute?.();
             if (pausedRef.current) event.target.pauseVideo?.();
             else event.target.playVideo?.();
           },
@@ -306,9 +335,24 @@ function ReelPlayer({
             silenceYoutubeCaptions(event.target);
             const state = window.YT?.PlayerState;
             if (event.data === state?.ENDED) finish(event.target);
-            if (event.data === state?.PLAYING) resumeRef.current = 0;
-            if (event.data === state?.PAUSED && !pausedRef.current && !endedRef.current && resumeRef.current < 4) {
+            if (event.data === state?.PLAYING) {
+              resumeRef.current = 0;
+              onPlayingRef.current(true);
+              if (!mutedRef.current && !soundTriedRef.current) {
+                soundTriedRef.current = true;
+                event.target.unMute?.();
+                event.target.playVideo?.();
+              }
+              return;
+            }
+            if (event.data === state?.PAUSED && pausedRef.current) onPlayingRef.current(false);
+            const stalled = event.data === state?.PAUSED || event.data === state?.CUED || event.data === state?.UNSTARTED || event.data === -1;
+            if (stalled && !pausedRef.current && !endedRef.current && resumeRef.current < 8) {
               resumeRef.current += 1;
+              if (soundTriedRef.current && !mutedRef.current) {
+                event.target.mute?.();
+                onSoundBlockedRef.current();
+              }
               event.target.playVideo?.();
             }
           },
@@ -325,10 +369,22 @@ function ReelPlayer({
       onProgressRef.current(Math.min(1, Math.max(0, ratio)));
       if (time < span.end - 0.6) loopingRef.current = false;
       if (time >= span.end - 0.25) finish(player);
+      const playerState = window.YT?.PlayerState;
+      const current = player.getPlayerState?.();
+      const moving = current === playerState?.PLAYING || current === playerState?.BUFFERING;
+      if (!pausedRef.current && !endedRef.current && !moving && resumeRef.current < 8) {
+        resumeRef.current += 1;
+        if (soundTriedRef.current && !mutedRef.current) {
+          player.mute?.();
+          onSoundBlockedRef.current();
+        }
+        player.playVideo?.();
+      }
     }, 200);
 
     return () => {
       cancelled = true;
+      onPlayingRef.current(false);
       window.clearInterval(timer);
       playerRef.current?.destroy?.();
       playerRef.current = null;
@@ -382,6 +438,8 @@ function ReelFilePlayer({
   paused,
   repeat,
   onProgress,
+  onPlaying,
+  onSoundBlocked,
   onEnded,
 }: {
   url: string;
@@ -390,6 +448,8 @@ function ReelFilePlayer({
   paused: boolean;
   repeat: boolean;
   onProgress: (value: number) => void;
+  onPlaying: (value: boolean) => void;
+  onSoundBlocked: () => void;
   onEnded: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
@@ -398,24 +458,50 @@ function ReelFilePlayer({
   const pausedRef = useRef(paused);
   const onEndedRef = useRef(onEnded);
   const onProgressRef = useRef(onProgress);
+  const onPlayingRef = useRef(onPlaying);
+  const onSoundBlockedRef = useRef(onSoundBlocked);
+  const mutedRef = useRef(muted);
+  const bootedRef = useRef(false);
+  const urlRef = useRef(url);
+  const [silent, setSilent] = useState(true);
+  if (urlRef.current !== url) {
+    urlRef.current = url;
+    bootedRef.current = false;
+  }
   repeatRef.current = repeat;
   pausedRef.current = paused;
+  mutedRef.current = muted;
   onEndedRef.current = onEnded;
   onProgressRef.current = onProgress;
+  onPlayingRef.current = onPlaying;
+  onSoundBlockedRef.current = onSoundBlocked;
 
   useEffect(() => {
     const video = videoRef.current;
     if (!video) return;
-    video.muted = muted;
-    if (!paused) void video.play().catch(() => undefined);
+    if (paused) {
+      video.pause();
+      return;
+    }
+    let cancelled = false;
+    const boot = !bootedRef.current;
+    if (boot) setSilent(true);
+    else setSilent(muted);
+    void video.play().then(() => {
+      if (cancelled || pausedRef.current) return;
+      bootedRef.current = true;
+      if (!mutedRef.current) setSilent(false);
+    }).catch(() => {
+      if (cancelled) return;
+      bootedRef.current = true;
+      setSilent(true);
+      if (!mutedRef.current) onSoundBlockedRef.current();
+      void video.play().catch(() => undefined);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [muted, paused, url]);
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-    if (paused) video.pause();
-    else void video.play().catch(() => undefined);
-  }, [paused]);
 
   const finish = (video: HTMLVideoElement, limit: number) => {
     if (endedRef.current) return;
@@ -436,9 +522,20 @@ function ReelFilePlayer({
         ref={videoRef}
         src={url}
         autoPlay
-        muted={muted}
+        muted={silent}
         playsInline
         className="h-full w-full object-cover"
+        onPlay={() => onPlayingRef.current(true)}
+        onPause={(event) => {
+          if (pausedRef.current || endedRef.current) {
+            onPlayingRef.current(false);
+            return;
+          }
+          if (mutedRef.current || silent) return;
+          setSilent(true);
+          onSoundBlockedRef.current();
+          void event.currentTarget.play().catch(() => undefined);
+        }}
         onLoadedMetadata={() => {
           endedRef.current = false;
           onProgressRef.current(0);
