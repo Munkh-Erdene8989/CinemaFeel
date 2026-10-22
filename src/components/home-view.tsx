@@ -106,6 +106,10 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
                     <Icon name="play" className="h-4 w-4" fill />
                     Одоо үзэх
                   </button>
+                  <a href="/reels" className="flex h-12 items-center gap-2 rounded-full border border-white/15 bg-black/20 px-6 text-sm font-extrabold backdrop-blur-md">
+                    <Icon name="reel" className="h-4 w-4" />
+                    Reel
+                  </a>
                   <span className="flex h-12 items-center rounded-full border border-white/15 bg-black/20 px-5 text-sm font-bold backdrop-blur-md">
                     {alreadyEntitled(featured, { ownedIds: owned, subscribed, creatorId: profile?.creatorId }) ? "Эрх нээлттэй" : featured.access === "free" ? "Үнэгүй" : `${formatMoney(featured.price)} · Нэг удаа`}
                   </span>

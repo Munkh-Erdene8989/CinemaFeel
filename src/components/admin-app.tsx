@@ -88,9 +88,9 @@ async function copyText(value: string) {
   }
 }
 
-async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", seriesId: string, onProgress?: (percent: number) => void) {
+async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video" | "reel", seriesId: string, onProgress?: (percent: number) => void) {
   const contentType = file.type || "application/octet-stream";
-  const body = kind === "video" ? await playableMp4(file) : file;
+  const body = kind === "video" || kind === "reel" ? await playableMp4(file) : file;
   const created = await adminFetch<{ uploadUrl: string; storagePath: string }>("/api/admin/upload-url", {
     method: "POST",
     body: JSON.stringify({ kind, seriesId, contentType, fileName: file.name }),
@@ -1095,12 +1095,16 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     age: film?.age ?? "13+",
   });
   const [episodes, setEpisodes] = useState<Episode[]>(film?.episodeList ?? []);
+  const [reelPreview, setReelPreview] = useState(false);
+  const [reelProgress, setReelProgress] = useState<number | null>(null);
   useEffect(() => {
     if (!film?.id) return;
     let ignore = false;
-    adminFetch<{ episodes: Episode[] }>(`/api/admin/series/${film.id}/episodes`)
+    adminFetch<{ episodes: Episode[]; reelPreview?: string }>(`/api/admin/series/${film.id}/episodes`)
       .then((data) => {
-        if (!ignore) setEpisodes(data.episodes);
+        if (ignore) return;
+        setEpisodes(data.episodes);
+        setReelPreview(Boolean(data.reelPreview));
       })
       .catch(() => undefined);
     return () => {
@@ -1247,6 +1251,36 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     }
   };
 
+  const uploadReel = async (file: File) => {
+    const id = seriesId || (await saveMeta());
+    if (!id) return;
+    setReelProgress(0);
+    setError("");
+    try {
+      const storagePath = await uploadAdminFile(file, "reel", id, setReelProgress);
+      const saved = await adminFetch<{ reelPreview: string }>(`/api/admin/series/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify({ reelPreviewPath: storagePath }),
+      });
+      setReelPreview(Boolean(saved.reelPreview));
+      setReelProgress(null);
+    } catch (cause) {
+      setReelProgress(null);
+      setError(cause instanceof Error ? cause.message : "Богино хувилбар хуулж чадсангүй.");
+    }
+  };
+
+  const clearReel = async () => {
+    if (!seriesId || reelProgress !== null) return;
+    setError("");
+    try {
+      await adminFetch(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify({ reelPreviewPath: "" }) });
+      setReelPreview(false);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Богино хувилбар устгагдсангүй.");
+    }
+  };
+
   const removeEpisode = async (episode: Episode) => {
     if (!seriesId) return;
     await adminFetch(`/api/admin/series/${seriesId}/episodes/${episode.id}`, { method: "DELETE" });
@@ -1356,6 +1390,29 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           </div>
           <EpisodeUpload onUpload={addEpisode} />
         </div>
+        <section className="mt-8 rounded-3xl border border-white/[.08] bg-black/25 p-4 sm:p-5">
+          <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-400">Reel трейлер</p>
+          <p className="mt-2 text-xs leading-5 text-zinc-500">Богино хувилбар оруулбал Reel цэсэнд энэ файл гарна. Оруулаагүй файлтай кино Reel-д орохгүй. YouTube анги бол эхний 5 минут автоматаар гарна.</p>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <FilePicker accept="video/mp4,video/webm,video/quicktime" disabled={reelProgress !== null} buttonLabel="Богино хувилбар" emptyLabel={reelPreview ? "Богино хувилбар орсон" : "Оруулаагүй"} fileName="" onFile={(file) => file && void uploadReel(file)} />
+            {reelPreview && (
+              <button type="button" onClick={() => void clearReel()} disabled={reelProgress !== null} className="text-xs font-bold text-red-400 disabled:opacity-40">Хасах</button>
+            )}
+          </div>
+          {reelPreview ? (
+            <p className="mt-3 text-xs font-bold text-zinc-300">Reel энэ богино хувилбарыг тоглуулна.</p>
+          ) : episodes.some((episode) => episode.source === "youtube" || episode.youtubeId) ? (
+            <p className="mt-3 text-xs font-bold text-zinc-400">YouTube ангитай тул Reel-д эхний 5 минут гарна.</p>
+          ) : null}
+          {reelProgress !== null && (
+            <div className="mt-3">
+              <div className="h-1.5 overflow-hidden rounded-full bg-white/10">
+                <div className="h-full rounded-full bg-[#ff2a2a]" style={{ width: `${reelProgress}%` }} />
+              </div>
+              <p className="mt-2 text-xs font-bold text-zinc-400">Богино хувилбар хуулж байна · {reelProgress}%</p>
+            </div>
+          )}
+        </section>
         {busy && <p className="mt-4 text-xs font-bold text-[#ff6679]">{busy}</p>}
         {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
         {mailed && <p className="mt-3 rounded-lg bg-white/[0.04] px-3 py-2 text-xs text-zinc-300">{mailed}</p>}

@@ -18,6 +18,7 @@ const paths: Record<string, string> = {
   copy: "M8 8h11v11H8V8ZM5 15V5h10",
   lock: "M6 10h12v10H6V10Zm3 0V7a3 3 0 0 1 6 0v3",
   film: "M4 4h16v16H4V4Zm0 5h16M8 4v5m8-5v5",
+  reel: "M8 3h8a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Zm1 4h6",
   chart: "M4 20V10m6 10V4m6 16v-7m4 7H2",
   users: "M9 12a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm-7 8c.5-4 2.8-6 7-6 2.4 0 4.2.7 5.4 2M17 11a3 3 0 1 0 0-6m1 9c2.4.5 3.7 2.5 4 5",
   settings: "M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm0-12v2m0 13v2M3.5 12h2m13 0h2M6 6l1.5 1.5m9 9L18 18M18 6l-1.5 1.5m-9 9L6 18",

@@ -42,9 +42,10 @@ export async function POST(request: NextRequest) {
     const loaded = await readManageableSeries(session, body.seriesId);
     if (!loaded.ok) return jsonError(loaded.error, loaded.status);
   }
-  const folders = { poster: "posters", cover: "covers", video: "videos" } as const;
+  const folders = { poster: "posters", cover: "covers", video: "videos", reel: "reels" } as const;
   const kind = body.kind as keyof typeof folders;
   if (!body.seriesId || !folders[kind]) return jsonError("Файл мэдээлэл дутуу.");
+  if ((kind === "video" || kind === "reel") && !contentType.startsWith("video/")) return jsonError("Видео файл оруулна уу.");
   const storagePath = `${folders[kind]}/${body.seriesId}/${Date.now()}-${safe}`;
   try {
     const [uploadUrl] = await adminBucket().file(storagePath).getSignedUrl({

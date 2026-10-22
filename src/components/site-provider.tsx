@@ -167,7 +167,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     const username = creatorUsernameFromPath(pathname);
     if (!username) {
-      if (pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/account") || pathname.startsWith("/terms")) {
+      if (pathname === "/" || pathname.startsWith("/library") || pathname.startsWith("/reels") || pathname.startsWith("/account") || pathname.startsWith("/terms")) {
         creatorNameRef.current = "";
         setCreatorSite(null);
         setCreatorLookup("idle");
@@ -287,17 +287,18 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : pathname.startsWith("/terms") ? "terms" : creatorChrome ? "creator" : "home";
+  const reels = pathname.startsWith("/reels");
+  const view = pathname.startsWith("/library") ? "library" : pathname.startsWith("/account") ? "account" : pathname.startsWith("/watch") ? "watch" : reels ? "reels" : pathname.startsWith("/terms") ? "terms" : creatorChrome ? "creator" : "home";
   const dock = creatorChrome
     ? [[homeHref, "home", "Нүүр"], ["/account", "user", "Профайл"]]
-    : [["/", "home", "Нүүр"], ["/library", "film", "Сан"], ["/account", "user", "Профайл"]];
+    : [["/", "home", "Нүүр"], ["/reels", "reel", "Reel"], ["/account", "user", "Профайл"]];
 
   return (
     <SiteContext.Provider value={value}>
       {!pathname.startsWith("/c/") && <CinemaIntro />}
-      <main ref={rootRef} data-site-root className="min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0">
+      <main ref={rootRef} data-site-root className={reels ? "h-dvh overflow-hidden bg-black text-white" : "min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0"}>
         <PageMotion />
-        <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
+        {!reels && <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-8 px-5 md:px-10 lg:px-16">
             <span data-chrome="logo">
               {creatorChrome ? (
@@ -309,7 +310,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             {!creatorChrome && (
               <nav className="ml-6 hidden items-center gap-7 text-sm font-semibold lg:flex">
                 <a data-chrome="link" href="/" className={view === "home" ? "text-white" : "text-zinc-500 hover:text-white"}>Нүүр</a>
-                <a data-chrome="link" href="/library" className={view === "library" ? "text-white" : "text-zinc-500 hover:text-white"}>Сан</a>
+                <a data-chrome="link" href="/reels" className={view === "reels" ? "text-white" : "text-zinc-500 hover:text-white"}>Reel</a>
               </nav>
             )}
             <div className="ml-auto flex items-center gap-2">
@@ -332,9 +333,9 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               )}
             </div>
           </div>
-        </header>
+        </header>}
         <div data-page>{children}</div>
-        <footer data-rise className="mx-auto max-w-[1440px] border-t border-white/[.07] px-5 py-10 text-xs text-zinc-600 md:px-10 lg:px-16">
+        {!reels && <footer data-rise className="mx-auto max-w-[1440px] border-t border-white/[.07] px-5 py-10 text-xs text-zinc-600 md:px-10 lg:px-16">
           <div className="flex flex-col justify-between gap-3 sm:flex-row">
             <p>© {new Date().getFullYear()} {creatorChrome ? `${brandName}. CinemaFeel дээр.` : "CinemaFeel. Богино түүх, том мэдрэмж."}</p>
             <div className="flex gap-5">
@@ -342,8 +343,8 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               <a href={`mailto:${settings.email}`}>Тусламж</a>
             </div>
           </div>
-        </footer>
-        <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
+        </footer>}
+        {!reels && <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
           {dock.map(([href, icon, label]) => {
             const active = href === homeHref ? view === "creator" || (href === "/" && view === "home") : view === href.slice(1);
             return (
@@ -358,7 +359,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
               </a>
             );
           })}
-        </nav>
+        </nav>}
         {joinOpen && <JoinModal onClose={() => setJoinOpen(false)} />}
         {authOpen && (
           <AuthModal

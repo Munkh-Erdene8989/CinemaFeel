@@ -1,3 +1,4 @@
+import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
 import { publishNotice } from "@/lib/publish-notice";
 import { seriesStatus } from "@/lib/series-doc";
@@ -18,6 +19,26 @@ export async function PATCH(request: NextRequest, context: Context) {
   if (!loaded.ok) return jsonError(loaded.error, loaded.status);
   const { ref } = loaded;
   const current = loaded.snap;
+
+  if (typeof body.reelPreviewPath === "string" && Object.keys(body).length === 1) {
+    const previous = String(current.data()?.reelPreviewPath ?? "");
+    const nextPath = body.reelPreviewPath.trim();
+    if (!nextPath) {
+      if (previous) await adminBucket().file(previous).delete({ ignoreNotFound: true });
+      await ref.set({ reelPreview: FieldValue.delete(), reelPreviewPath: FieldValue.delete() }, { merge: true });
+      return NextResponse.json({ ok: true, reelPreview: "" });
+    }
+    if (!nextPath.startsWith(`reels/${id}/`)) return jsonError("Reel файл буруу байна.");
+    try {
+      const reelPreview = await posterUrl(nextPath);
+      if (previous && previous !== nextPath) await adminBucket().file(previous).delete({ ignoreNotFound: true });
+      await ref.set({ reelPreview, reelPreviewPath: nextPath }, { merge: true });
+      return NextResponse.json({ ok: true, reelPreview });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Storage холбогдсонгүй.";
+      return jsonError(`Богино хувилбар хадгалагдсангүй. ${message}`, 503);
+    }
+  }
 
   if (typeof body.status === "string" && Object.keys(body).length === 1) {
     const nextStatus = seriesStatus(body.status);
@@ -74,6 +95,8 @@ export async function DELETE(request: NextRequest, context: Context) {
   await Promise.all(covers.map((file) => file.delete({ ignoreNotFound: true })));
   const [videos] = await adminBucket().getFiles({ prefix: `videos/${id}/` });
   await Promise.all(videos.map((file) => file.delete({ ignoreNotFound: true })));
+  const [reels] = await adminBucket().getFiles({ prefix: `reels/${id}/` });
+  await Promise.all(reels.map((file) => file.delete({ ignoreNotFound: true })));
   const [subtitles] = await adminBucket().getFiles({ prefix: `subtitles/${id}/` });
   await Promise.all(subtitles.map((file) => file.delete({ ignoreNotFound: true })));
   const shards = await ref.collection("viewShards").get();
