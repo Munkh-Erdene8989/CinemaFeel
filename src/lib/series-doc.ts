@@ -1,5 +1,5 @@
 import { isMature, normalizeAge } from "./mature";
-import type { Access, Series, SeriesStatus } from "./types";
+import type { Access, Series, SeriesStatus, TranslationKind } from "./types";
 
 export type SeriesRecord = Record<string, unknown>;
 
@@ -9,6 +9,11 @@ export function seriesAccess(price: number, access?: unknown): Access {
 
 export function seriesStatus(status: unknown): SeriesStatus {
   return status === "Нийтлэгдсэн" ? "Нийтлэгдсэн" : "Ноорог";
+}
+
+export function seriesTranslation(value: unknown): TranslationKind | "" {
+  const text = String(value ?? "").trim();
+  return text === "Хадмал" || text === "Хэл" ? text : "";
 }
 
 export function seriesFromRecord(id: string, data: SeriesRecord, now = Date.now()): Series {
@@ -29,6 +34,7 @@ export function seriesFromRecord(id: string, data: SeriesRecord, now = Date.now(
     ownerId: String(data.ownerId ?? ""),
     ownerName: String(data.ownerName ?? ""),
     status: seriesStatus(data.status),
+    translation: seriesTranslation(data.translation),
     featured: Boolean(data.featured),
     year: Number(data.year ?? new Date(now).getFullYear()),
     age: normalizeAge(data.age),
@@ -51,6 +57,7 @@ export function seriesWritePayload(body: SeriesRecord, createdAt = Date.now()) {
     image: String(body.image ?? ""),
     cover: mature ? "" : String(body.cover ?? ""),
     status: seriesStatus(body.status),
+    translation: seriesTranslation(body.translation),
     featured: mature ? false : Boolean(body.featured),
     year: Number(body.year ?? new Date().getFullYear()),
     age,

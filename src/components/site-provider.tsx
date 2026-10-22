@@ -9,6 +9,7 @@ import { seriesFromRecord } from "@/lib/series-doc";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
 import { defaultSettings, mergeSettings } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
+import { sessionExpired, sessionRemainingMs } from "@/lib/session-ttl";
 import { alreadyEntitled } from "@/lib/entitlement";
 import { playbackMark } from "@/lib/playback-mark";
 import { accountInitial, subscriptionActive } from "@/lib/format";
@@ -97,18 +98,31 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     }
     const auth = clientAuth();
     const db = clientDb();
+    let sessionTimer = 0;
+    const expireSession = () => {
+      notify("Нэвтрэлтийн хугацаа дууссан. Дахин нэвтэрнэ үү.");
+      void signOut(auth);
+    };
     const stopAuth = onAuthStateChanged(auth, async (next) => {
-      setUser(next);
+      window.clearTimeout(sessionTimer);
       if (!next) {
+        setUser(null);
         setProfile(null);
         setOwned([]);
         setPayments([]);
         return;
       }
-      const token = await next.getIdToken();
+      const result = await next.getIdTokenResult();
+      const authTime = Number(result.claims.auth_time);
+      if (sessionExpired(authTime)) {
+        expireSession();
+        return;
+      }
+      setUser(next);
+      sessionTimer = window.setTimeout(expireSession, sessionRemainingMs(authTime));
       const response = await fetch("/api/auth/bootstrap", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}` },
+        headers: { Authorization: `Bearer ${result.token}` },
       });
       if (!response.ok) {
         const data = (await response.json()) as { error?: string };
@@ -124,6 +138,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       if (snap.exists()) setSettings(mergeSettings(snap.data() as Settings));
     });
     return () => {
+      window.clearTimeout(sessionTimer);
       stopAuth();
       stopSeries();
       stopSettings();

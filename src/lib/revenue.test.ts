@@ -17,6 +17,7 @@ function series(partial: Pick<Series, "id" | "ownerId" | "uniqueViews"> & Partia
     views: 0,
     ownerName: "",
     status: "Нийтлэгдсэн",
+    translation: "",
     featured: false,
     year: 2026,
     age: "13+",

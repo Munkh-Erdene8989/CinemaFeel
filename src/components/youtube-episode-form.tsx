@@ -69,6 +69,7 @@ export function YoutubeEpisodeForm({
   const [description, setDescription] = useState("");
   const [price, setPrice] = useState(0);
   const [status, setStatus] = useState("Ноорог");
+  const [translation, setTranslation] = useState("Хадмал");
   const [episodeTitle, setEpisodeTitle] = useState("");
   const [youtubeUrl, setYoutubeUrl] = useState("");
   const [subtitleText, setSubtitleText] = useState("");
@@ -133,6 +134,7 @@ export function YoutubeEpisodeForm({
             description,
             price: Number(price) || 0,
             status,
+            translation,
             age,
             episodes: 1,
           }),
@@ -245,6 +247,12 @@ export function YoutubeEpisodeForm({
                     <option>13+</option>
                     <option>16+</option>
                     <option>18+</option>
+                  </select>
+                </AdminField>
+                <AdminField label="Орчуулгын төрөл">
+                  <select value={translation} onChange={(event) => setTranslation(event.target.value)} className="admin-input">
+                    <option>Хадмал</option>
+                    <option>Хэл</option>
                   </select>
                 </AdminField>
                 <AdminField label="Тайлбар">

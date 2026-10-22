@@ -1052,6 +1052,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     image: film?.image ?? "",
     cover: film?.cover ?? "",
     status: film?.status ?? "Ноорог",
+    translation: film?.translation || "Хадмал",
     featured: film?.featured ?? false,
     year: film?.year ?? 2026,
     age: film?.age ?? "13+",
@@ -1070,8 +1071,6 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     };
   }, [film?.id]);
   const [seriesId, setSeriesId] = useState(film?.id ?? "");
-  const [shareCode, setShareCode] = useState(film?.shareCode ?? "");
-  const [copied, setCopied] = useState(false);
   const [newGenre, setNewGenre] = useState("");
   const [posterFile, setPosterFile] = useState<File | null>(null);
   const [coverFile, setCoverFile] = useState<File | null>(null);
@@ -1103,13 +1102,11 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
       if (!seriesId) {
         const created = await adminFetch<ReleaseNotice & { id: string; shareCode: string }>("/api/admin/series", { method: "POST", body: JSON.stringify(payload) });
         setSeriesId(created.id);
-        setShareCode(created.shareCode);
         rememberMail(created);
         setBusy("");
         return created.id;
       }
       const saved = await adminFetch<ReleaseNotice & { shareCode?: string }>(`/api/admin/series/${seriesId}`, { method: "PATCH", body: JSON.stringify(payload) });
-      if (saved.shareCode) setShareCode(saved.shareCode);
       rememberMail(saved);
       setBusy("");
       return seriesId;
@@ -1150,7 +1147,6 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
       });
       update("cover", saved.cover);
       setCoverFile(null);
-      if (saved.shareCode) setShareCode(saved.shareCode);
       rememberMail(saved);
       setBusy("");
       return true;
@@ -1255,11 +1251,6 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
               {posterFile && <button type="button" onClick={() => setPosterFile(null)} className="font-bold text-zinc-500 hover:text-white">Thumbnail болих</button>}
             </div>
           )}
-          <div className="mt-4">
-            <AdminField label="Thumbnail холбоос">
-              <input value={form.image} onChange={(e) => update("image", e.target.value)} placeholder="Эсвэл зургийн холбоос буулгана уу" className="admin-input" />
-            </AdminField>
-          </div>
         </section>
         <div className="mt-7 grid gap-5 sm:grid-cols-2">
           <AdminField label="Нэр"><input value={form.title} onChange={(e) => update("title", e.target.value)} placeholder="Киноны нэр" className="admin-input" /></AdminField>
@@ -1300,33 +1291,14 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
               {(["13+", "16+", "18+"].includes(form.age) ? ["13+", "16+", "18+"] : [form.age, "13+", "16+", "18+"]).map((age) => <option key={age}>{age}</option>)}
             </select>
           </AdminField>
+          <AdminField label="Орчуулгын төрөл">
+            <select value={form.translation} onChange={(e) => update("translation", e.target.value)} className="admin-input">
+              <option>Хадмал</option>
+              <option>Хэл</option>
+            </select>
+          </AdminField>
           <div className="sm:col-span-2">
             <AdminField label="Тайлбар"><textarea value={form.description} onChange={(e) => update("description", e.target.value)} className="admin-input h-24 py-3" /></AdminField>
-          </div>
-          <div className="sm:col-span-2">
-            <AdminField label="Хуваалцах линк">
-              {shareCode ? (
-                <div className="flex gap-2">
-                  <input readOnly value={shareHref(shareCode)} className="admin-input" />
-                  <button
-                    type="button"
-                    onClick={() => {
-                      copyText(shareHref(shareCode)).then((ok) => {
-                        if (!ok) return;
-                        setCopied(true);
-                        window.setTimeout(() => setCopied(false), 1600);
-                      });
-                    }}
-                    className="shrink-0 rounded-xl bg-white px-4 text-xs font-extrabold text-black"
-                  >
-                    {copied ? "Хуулсан" : "Хуулах"}
-                  </button>
-                </div>
-              ) : (
-                <p className="rounded-xl border border-white/10 px-4 py-3 text-xs text-zinc-500">Хадгалсны дараа богино линк гарна.</p>
-              )}
-            </AdminField>
-            {shareCode && form.status !== "Нийтлэгдсэн" && <p className="mt-2 text-[11px] text-zinc-600">Ноорог үед линк хаагдсан байна. Нийтэлсний дараа нээгдэнэ.</p>}
           </div>
           <AdminField label="Төлөв">
             <select value={form.status} onChange={(e) => update("status", e.target.value)} className="admin-input"><option>Ноорог</option><option>Нийтлэгдсэн</option></select>

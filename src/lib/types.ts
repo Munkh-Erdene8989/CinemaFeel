@@ -2,6 +2,7 @@ import { marketingFromSettings } from "./marketing";
 
 export type Access = "free" | "paid";
 export type SeriesStatus = "Нийтлэгдсэн" | "Ноорог";
+export type TranslationKind = "Хадмал" | "Хэл";
 export type Plan = "Үндсэн" | "Plus";
 export type UserStatus = "Идэвхтэй" | "Түр зогссон";
 export type PaymentStatus = "Хүлээгдэж буй" | "Амжилттай" | "Буцаагдсан" | "Амжилтгүй";
@@ -64,6 +65,7 @@ export type Series = {
   ownerId: string;
   ownerName: string;
   status: SeriesStatus;
+  translation: TranslationKind | "";
   featured: boolean;
   year: number;
   age: string;

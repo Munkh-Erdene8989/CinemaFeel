@@ -29,6 +29,11 @@ export function FilmCard({ film, owned, onClick, delay = 0 }: { film: Series; ow
         <span className={`absolute left-1.5 top-1.5 max-w-[calc(100%-0.75rem)] truncate rounded-full px-1.5 py-0.5 text-[8px] font-black backdrop-blur-md sm:left-3 sm:top-3 sm:px-2.5 sm:py-1 sm:text-[10px] ${film.access === "free" ? "bg-emerald-400 text-black" : "bg-black/55 text-white"}`}>
           {owned ? "АВСАН" : film.access === "free" ? "ҮНЭГҮЙ" : formatMoney(film.price)}
         </span>
+        {film.translation ? (
+          <span className="absolute bottom-1.5 left-1.5 max-w-[calc(100%-2.5rem)] truncate rounded-full bg-[#ff3d56] px-1.5 py-0.5 text-[8px] font-black text-white sm:bottom-3 sm:left-3 sm:px-2.5 sm:py-1 sm:text-[10px]">
+            {film.translation}
+          </span>
+        ) : null}
         <span data-play className="absolute bottom-2 right-2 grid h-8 w-8 translate-y-2 place-items-center rounded-full bg-white text-black opacity-0 shadow-xl motion-reduce:transition motion-reduce:duration-300 motion-reduce:group-hover:translate-y-0 motion-reduce:group-hover:opacity-100 sm:bottom-3 sm:right-3 sm:h-10 sm:w-10">
           <Icon name="play" className="h-3.5 w-3.5 sm:h-4 sm:w-4" fill />
         </span>

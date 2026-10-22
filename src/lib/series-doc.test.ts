@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { seriesAccess, seriesFromRecord, seriesStatus, seriesWritePayload } from "./series-doc.ts";
+import { seriesAccess, seriesFromRecord, seriesStatus, seriesTranslation, seriesWritePayload } from "./series-doc.ts";
 
 test("a zero price is free on read and write", () => {
   assert.equal(seriesAccess(0, "paid"), "free");
@@ -26,4 +26,19 @@ test("missing status is a draft", () => {
   assert.equal(seriesStatus("Нийтлэгдсэн"), "Нийтлэгдсэн");
   assert.equal(seriesFromRecord("a", {}).status, "Ноорог");
   assert.equal(seriesWritePayload({}).status, "Ноорог");
+});
+
+test("save keeps the selected publish status", () => {
+  assert.equal(seriesWritePayload({ title: "Кино", status: "Нийтлэгдсэн" }).status, "Нийтлэгдсэн");
+  assert.equal(seriesWritePayload({ title: "Кино", status: "Ноорог" }).status, "Ноорог");
+  assert.equal(seriesWritePayload({ title: "Кино", status: "Нийтлэгдсэн", posterPath: "posters/a.jpg" }).status, "Нийтлэгдсэн");
+});
+
+test("translation is subtitles or dubbed", () => {
+  assert.equal(seriesTranslation("Хадмал"), "Хадмал");
+  assert.equal(seriesTranslation("Хэл"), "Хэл");
+  assert.equal(seriesTranslation("бусад"), "");
+  assert.equal(seriesWritePayload({ translation: "Хэл" }).translation, "Хэл");
+  assert.equal(seriesFromRecord("a", { translation: "Хадмал" }).translation, "Хадмал");
+  assert.equal(seriesFromRecord("a", {}).translation, "");
 });

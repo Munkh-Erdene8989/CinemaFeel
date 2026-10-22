@@ -86,6 +86,7 @@ export function FilmModal({
         <div className="relative min-h-72 md:min-h-[520px]">
           <img src={film.image} alt={film.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-[#151519]" />
+          {film.translation ? <span className="absolute bottom-4 left-4 rounded-full bg-[#ff3d56] px-2.5 py-1 text-[10px] font-black text-white">{film.translation}</span> : null}
           {!available && !checking && (
             <button
               onClick={() => onCheckout("weekly")}
@@ -102,6 +103,7 @@ export function FilmModal({
           <div className="flex gap-2">
             {film.access === "free" && <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-400">Үнэгүй</span>}
             <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-300">{film.year}</span>
+            {film.translation ? <span className="rounded-full bg-[#ff3d56] px-3 py-1 text-[10px] font-black uppercase tracking-wider text-white">{film.translation}</span> : null}
           </div>
           <h2 className="mt-5 text-3xl font-black tracking-tight">{film.title}</h2>
           <p className="mt-3 text-xs font-semibold text-zinc-500">{film.genre} · {film.episodes} анги · {film.age}</p>
