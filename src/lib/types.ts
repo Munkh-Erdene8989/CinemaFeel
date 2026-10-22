@@ -161,6 +161,19 @@ export type Discount = {
   createdAt: number;
 };
 
+export const expenseCategories = ["Зар сурталчилгаа", "Сервер", "Контент", "Цалин", "Бусад"] as const;
+export type ExpenseCategory = (typeof expenseCategories)[number];
+
+export type Expense = {
+  id: string;
+  title: string;
+  amount: number;
+  category: ExpenseCategory;
+  note: string;
+  spentOn: string;
+  createdAt: number;
+};
+
 export type Settings = {
   name: string;
   email: string;

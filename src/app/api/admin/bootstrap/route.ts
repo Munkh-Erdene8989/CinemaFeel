@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
+import { paymentsWithoutQr } from "@/lib/payment-query";
 import { revenueForWindow, revenueWindow, scopedRevenue } from "@/lib/revenue";
 import { mapStaff } from "@/lib/staff";
 import { mergeSettings, type AppUser, type Payment, type Settings } from "@/lib/types";
@@ -18,7 +19,7 @@ export async function GET(request: NextRequest) {
   const [series, settingsSnap, paymentSnap, staffSnap, plusSnap, countSnap] = await Promise.all([
     listSeries(),
     adminDb().collection("settings").doc("app").get(),
-    adminDb().collection("payments").where("createdAt", ">=", since).get(),
+    paymentsWithoutQr(adminDb().collection("payments").where("createdAt", ">=", since)).get(),
     adminDb().collection("admins").get(),
     creator ? Promise.resolve(null) : adminDb().collection("users").where("plan", "==", "Plus").get(),
     creator ? Promise.resolve(null) : adminDb().collection("users").count().get(),

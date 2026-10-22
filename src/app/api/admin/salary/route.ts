@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, requireSuper } from "@/lib/http";
+import { paymentsWithoutQr } from "@/lib/payment-query";
 import { buildSalaryCreators, listedSalaryCycle, payableSalaryCycles, salaryPayoutDocId, salaryStatus, type SalaryPayout } from "@/lib/salary";
 import type { Payment } from "@/lib/types";
 
@@ -15,7 +16,7 @@ export async function GET(request: NextRequest) {
   for (let index = 0; index < cycleIds.length; index += 30) payoutChunks.push(cycleIds.slice(index, index + 30));
   const [seriesSnap, paymentSnap, staffSnap, payoutSnaps] = await Promise.all([
     adminDb().collection("series").get(),
-    adminDb().collection("payments").where("createdAt", ">=", since).get(),
+    paymentsWithoutQr(adminDb().collection("payments").where("createdAt", ">=", since)).get(),
     adminDb().collection("admins").get(),
     Promise.all(payoutChunks.map((ids) => adminDb().collection("salaryPayouts").where("cycleId", "in", ids).get())),
   ]);

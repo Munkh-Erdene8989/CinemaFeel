@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { mapSeries } from "@/lib/catalog";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError } from "@/lib/http";
+import { paymentsWithoutQr } from "@/lib/payment-query";
 import { revenueForWindow, revenueWindow, scopedRevenue } from "@/lib/revenue";
 import type { Payment } from "@/lib/types";
 
@@ -11,7 +12,7 @@ export async function GET(request: NextRequest) {
   const { since } = revenueWindow(request.nextUrl.searchParams.get("days"));
   const [seriesSnap, paymentSnap, staffSnap] = await Promise.all([
     adminDb().collection("series").get(),
-    adminDb().collection("payments").where("createdAt", ">=", since).get(),
+    paymentsWithoutQr(adminDb().collection("payments").where("createdAt", ">=", since)).get(),
     adminDb().collection("admins").get(),
   ]);
   const series = seriesSnap.docs.map((item) => mapSeries(item.id, item.data()));
