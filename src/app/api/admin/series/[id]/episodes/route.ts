@@ -13,7 +13,11 @@ export async function GET(request: NextRequest, context: { params: Promise<{ id:
   const loaded = await readManageableSeries(session, id);
   if (!loaded.ok) return jsonError(loaded.error, loaded.status);
   const data = loaded.snap.data() ?? {};
-  return NextResponse.json({ episodes: await listEpisodes(loaded.ref), reelPreview: String(data.reelPreview ?? "") });
+  return NextResponse.json({
+    episodes: await listEpisodes(loaded.ref),
+    reelPreview: String(data.reelPreview ?? ""),
+    reelPreviewPath: String(data.reelPreviewPath ?? ""),
+  });
 }
 
 export async function POST(request: NextRequest, context: { params: Promise<{ id: string }> }) {
