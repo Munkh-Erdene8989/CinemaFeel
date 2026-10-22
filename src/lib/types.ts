@@ -161,8 +161,16 @@ export type Discount = {
   createdAt: number;
 };
 
-export const expenseCategories = ["Зар сурталчилгаа", "Сервер", "Контент", "Цалин", "Бусад"] as const;
+export const expenseCategories = ["Зар сурталчилгаа", "Веб хөгжүүлэлт", "Үйл ажиллагаа", "Цалин", "Сервер", "Контент", "Хэрэгсэл", "Банкны шимтгэл", "Татвар", "Бусад"] as const;
 export type ExpenseCategory = (typeof expenseCategories)[number];
+
+export const expenseFrequencies = ["once", "monthly", "custom"] as const;
+export type ExpenseFrequency = (typeof expenseFrequencies)[number];
+
+export const expenseIntervals = [2, 3, 6, 12] as const;
+export type ExpenseInterval = (typeof expenseIntervals)[number];
+
+export type ExpenseSource = "manual" | "recurring" | "salary";
 
 export type Expense = {
   id: string;
@@ -171,6 +179,27 @@ export type Expense = {
   category: ExpenseCategory;
   note: string;
   spentOn: string;
+  createdAt: number;
+  frequency: ExpenseFrequency;
+  intervalMonths: number;
+  templateId: string;
+  source: ExpenseSource;
+  receiptPath: string;
+};
+
+export type ExpenseTemplate = {
+  id: string;
+  title: string;
+  amount: number;
+  category: ExpenseCategory;
+  note: string;
+  frequency: "monthly" | "custom";
+  intervalMonths: number;
+  startMonth: string;
+  anchorDay: number;
+  endedMonth: string;
+  skippedMonths: string[];
+  receiptPath: string;
   createdAt: number;
 };
 

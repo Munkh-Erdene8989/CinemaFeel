@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildSalaryCreators, currentSalaryCycle, payableSalaryCycles, recentSalaryCycles, salaryCycleAt } from "./salary.ts";
+import { buildSalaryCreators, currentSalaryCycle, payableSalaryCycles, recentSalaryCycles, salaryCycleAt, salaryPayoutDate } from "./salary.ts";
 import type { Payment, Series } from "./types.ts";
 
 const UB_OFFSET_MS = 8 * 60 * 60 * 1000;
@@ -81,12 +81,16 @@ test("the 30th and the 31st stay in the second half, and the 1st opens the next 
 
 test("February pays on the last day of the month", () => {
   const plain = salaryCycleAt(2026, 2, "b");
+  assert.equal(salaryPayoutDate(salaryCycleAt(2026, 10, "a")), "2026-10-15");
+  assert.equal(salaryPayoutDate(salaryCycleAt(2026, 10, "b")), "2026-10-30");
+  assert.equal(salaryPayoutDate(plain), "2026-02-28");
   assert.equal(plain.payoutLabel, "2 сарын 28");
   assert.equal(plain.label, "2 сарын 16 – 28");
   assert.equal(plain.end, at(2026, 3, 1));
   assert.equal(currentSalaryCycle(at(2026, 2, 28, 23, 59)).id, "2026-02-b");
 
   const leap = salaryCycleAt(2024, 2, "b");
+  assert.equal(salaryPayoutDate(leap), "2024-02-29");
   assert.equal(leap.payoutLabel, "2 сарын 29");
   assert.equal(leap.label, "2 сарын 16 – 29");
   assert.equal(currentSalaryCycle(at(2024, 2, 29, 23, 59)).id, "2024-02-b");

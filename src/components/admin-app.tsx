@@ -1,9 +1,10 @@
 "use client";
 
 import { createContext, Fragment, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Expense, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
+import type { AdminRevenue, AdminSession, AppUser, Discount, Episode, Expense, ExpenseCategory, ExpenseFrequency, Lesson, Payment, RevenueReport, SeriesWithEpisodes, Settings, StaffAdmin } from "@/lib/types";
 import { isSubscriptionCheckout, revokePass } from "@/lib/entitlement";
-import { CREATOR_FEE, defaultSettings, expenseCategories } from "@/lib/types";
+import { CREATOR_FEE, defaultSettings, expenseCategories, expenseIntervals } from "@/lib/types";
+import { currentExpenseMonth, expenseFrequencyLabel, EXPENSE_RECEIPT_LIMIT } from "@/lib/expenses";
 import { daysRemaining, formatDate, formatMoney, formatPhone, formatViews, subscriptionActive } from "@/lib/format";
 import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
@@ -114,6 +115,27 @@ async function uploadAdminFile(file: File, kind: "poster" | "cover" | "video", s
     xhr.send(body);
   });
   return created.storagePath;
+}
+
+async function uploadExpenseReceipt(file: File, target: { expenseId?: string; templateId?: string }) {
+  if (file.size > EXPENSE_RECEIPT_LIMIT) throw new Error("PDF 8MB-аас бага байна.");
+  if (file.type && file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) throw new Error("Зөвхөн PDF хавсаргана.");
+  const created = await adminFetch<{ uploadUrl: string; storagePath: string }>("/api/admin/expenses/receipt", {
+    method: "POST",
+    body: JSON.stringify({ ...target, contentType: "application/pdf", fileName: file.name }),
+  });
+  await new Promise<void>((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", created.uploadUrl);
+    xhr.setRequestHeader("Content-Type", "application/pdf");
+    xhr.onload = () => (xhr.status >= 200 && xhr.status < 300 ? resolve() : reject(new Error("PDF хуулагдаж чадсангүй.")));
+    xhr.onerror = () => reject(new Error("PDF хуулагдаж чадсангүй."));
+    xhr.send(file);
+  });
+  await adminFetch("/api/admin/expenses/receipt", {
+    method: "PATCH",
+    body: JSON.stringify({ ...target, receiptPath: created.storagePath, applyToEmpty: Boolean(target.templateId) }),
+  });
 }
 
 export function AdminApp() {
@@ -1739,38 +1761,96 @@ function spentLabel(spentOn: string) {
 function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
   const [expenses, setExpenses] = useState<Expense[]>([]);
   const [total, setTotal] = useState(0);
+  const [byCategory, setByCategory] = useState<{ category: ExpenseCategory; total: number }[]>([]);
+  const [month, setMonth] = useState(currentExpenseMonth);
+  const [showAll, setShowAll] = useState(false);
+  const [frequencyFilter, setFrequencyFilter] = useState<"all" | ExpenseFrequency>("all");
   const [title, setTitle] = useState("");
   const [amount, setAmount] = useState("");
   const [category, setCategory] = useState<(typeof expenseCategories)[number]>(expenseCategories[0]);
+  const [frequency, setFrequency] = useState<ExpenseFrequency>("once");
+  const [intervalMonths, setIntervalMonths] = useState<(typeof expenseIntervals)[number]>(3);
   const [spentOn, setSpentOn] = useState(todayInput);
   const [note, setNote] = useState("");
+  const [receiptFile, setReceiptFile] = useState<File | null>(null);
+  const [receiptKey, setReceiptKey] = useState(0);
   const [busy, setBusy] = useState(false);
-  const [pending, setPending] = useState<Expense | null>(null);
-  const list = usePaged(expenses, `${expenses.length}|${total}`);
+  const [pending, setPending] = useState<{ expense: Expense; stop: boolean } | null>(null);
+  const queryMonth = showAll ? "all" : month;
+  const visible = frequencyFilter === "all" ? expenses : expenses.filter((item) => item.frequency === frequencyFilter);
+  const list = usePaged(visible, `${queryMonth}|${frequencyFilter}|${expenses.length}|${total}`);
+  const monthTitle = showAll ? "Бүх сар" : `${month.slice(0, 4)} оны ${Number(month.slice(5, 7))} сар`;
 
   const load = async () => {
-    const data = await adminFetch<{ expenses: Expense[]; total: number }>("/api/admin/expenses");
+    const data = await adminFetch<{ expenses: Expense[]; total: number; byCategory: { category: ExpenseCategory; total: number }[] }>(`/api/admin/expenses?month=${encodeURIComponent(queryMonth)}`);
     setExpenses(data.expenses);
     setTotal(data.total);
+    setByCategory(data.byCategory);
   };
 
   useEffect(() => {
-    load().catch((error: Error) => notify(error.message));
-  }, []);
+    let active = true;
+    adminFetch<{ expenses: Expense[]; total: number; byCategory: { category: ExpenseCategory; total: number }[] }>(`/api/admin/expenses?month=${encodeURIComponent(queryMonth)}`)
+      .then((data) => {
+        if (!active) return;
+        setExpenses(data.expenses);
+        setTotal(data.total);
+        setByCategory(data.byCategory);
+      })
+      .catch((error: Error) => {
+        if (active) notify(error.message);
+      });
+    return () => {
+      active = false;
+    };
+  }, [queryMonth]);
+
+  const pickReceipt = (file: File | null) => {
+    if (file && file.size > EXPENSE_RECEIPT_LIMIT) {
+      notify("PDF 8MB-аас бага байна.");
+      setReceiptFile(null);
+      setReceiptKey((value) => value + 1);
+      return;
+    }
+    if (file && file.type && file.type !== "application/pdf" && !file.name.toLowerCase().endsWith(".pdf")) {
+      notify("Зөвхөн PDF хавсаргана.");
+      setReceiptFile(null);
+      setReceiptKey((value) => value + 1);
+      return;
+    }
+    setReceiptFile(file);
+  };
 
   const create = async () => {
     setBusy(true);
     try {
-      const saved = await adminFetch<{ expense: Expense }>("/api/admin/expenses", {
+      const saved = await adminFetch<{ expense: Expense | null; templateId: string }>("/api/admin/expenses", {
         method: "POST",
-        body: JSON.stringify({ title, amount: Number(amount), category, spentOn, note }),
+        body: JSON.stringify({ title, amount: Number(amount), category, spentOn, note, frequency, intervalMonths: frequency === "custom" ? intervalMonths : undefined }),
       });
-      setExpenses((current) => [saved.expense, ...current.filter((item) => item.id !== saved.expense.id)].sort((a, b) => b.spentOn.localeCompare(a.spentOn) || b.createdAt - a.createdAt));
-      setTotal((current) => current + saved.expense.amount);
+      if (receiptFile) {
+        const target = saved.templateId ? { templateId: saved.templateId } : { expenseId: saved.expense?.id };
+        if (!target.templateId && !target.expenseId) throw new Error("Баримт хавсаргах зардал олдсонгүй.");
+        try {
+          await uploadExpenseReceipt(receiptFile, target);
+        } catch (error) {
+          await load();
+          setTitle("");
+          setAmount("");
+          setNote("");
+          setReceiptFile(null);
+          setReceiptKey((value) => value + 1);
+          notify(error instanceof Error ? error.message : "Зардал бүртгэгдсэн. Баримт хуулагдаагүй.");
+          return;
+        }
+      }
+      await load();
       setTitle("");
       setAmount("");
       setNote("");
-      notify("Зардал бүртгэгдлээ.");
+      setReceiptFile(null);
+      setReceiptKey((value) => value + 1);
+      notify(frequency === "once" ? "Зардал бүртгэгдлээ." : saved.expense ? "Тогтмол зардал бүртгэгдлээ." : "Тогтмол зардал хадгалагдлаа. Эхлэх сар болоход нэмэгдэнэ.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Зардал бүртгэгдсэнгүй.");
     } finally {
@@ -1778,16 +1858,37 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
     }
   };
 
-  const remove = async (expense: Expense) => {
+  const remove = async (item: { expense: Expense; stop: boolean }) => {
     setBusy(true);
     try {
-      await adminFetch("/api/admin/expenses", { method: "DELETE", body: JSON.stringify({ id: expense.id }) });
-      setExpenses((current) => current.filter((item) => item.id !== expense.id));
-      setTotal((current) => current - expense.amount);
+      await adminFetch("/api/admin/expenses", { method: "DELETE", body: JSON.stringify({ id: item.expense.id, stop: item.stop }) });
       setPending(null);
-      notify("Зардал устлаа.");
+      await load();
+      notify(item.stop ? "Дараагийн сарууд зогслоо." : "Зардал устлаа.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Зардал устсангүй.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const openReceipt = async (id: string) => {
+    try {
+      const data = await adminFetch<{ url: string }>(`/api/admin/expenses/receipt?id=${encodeURIComponent(id)}`);
+      window.open(data.url, "_blank", "noopener,noreferrer");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Баримт нээгдсэнгүй.");
+    }
+  };
+
+  const attach = async (expense: Expense, file: File) => {
+    setBusy(true);
+    try {
+      await uploadExpenseReceipt(file, { expenseId: expense.id });
+      await load();
+      notify("Баримт хавсарлаа.");
+    } catch (error) {
+      notify(error instanceof Error ? error.message : "Баримт хуулагдаагүй.");
     } finally {
       setBusy(false);
     }
@@ -1798,13 +1899,29 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
           <h2 className="text-2xl font-black">Зардал бүртгэх</h2>
-          <p className="mt-1 text-sm text-zinc-600">Платформын зарлагыг огноо, ангиллаар тэмдэглэнэ.</p>
+          <p className="mt-1 text-sm text-zinc-600">Сар бүр, нэг удаа, давтамжаар тэмдэглээд сараар нь харна.</p>
         </div>
-        <div className="rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-3">
-          <p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">Нийт зардал</p>
-          <p className="mt-1 text-xl font-black text-[#ff6679]">{formatMoney(total)}</p>
+        <div className="flex flex-wrap items-end gap-3">
+          <AdminField label="Сар">
+            <input value={month} onChange={(event) => { if (!event.target.value) return; setMonth(event.target.value); setShowAll(false); }} type="month" className="admin-input !w-auto" />
+          </AdminField>
+          <button onClick={() => setShowAll((value) => !value)} className={`h-12 rounded-xl px-4 text-xs font-extrabold ${showAll ? "bg-white text-black" : "border border-white/10 text-zinc-300"}`}>Бүх сар</button>
+          <div className="rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-3">
+            <p className="text-[10px] font-black uppercase tracking-[.16em] text-zinc-500">{monthTitle}</p>
+            <p className="mt-1 text-xl font-black text-[#ff6679]">{formatMoney(total)}</p>
+          </div>
         </div>
       </div>
+      {!!byCategory.length && (
+        <div className="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+          {byCategory.map((item) => (
+            <div key={item.category} className="rounded-2xl border border-white/[.07] bg-[#141419] px-4 py-3">
+              <p className="text-[10px] font-black uppercase tracking-[.14em] text-zinc-500">{item.category}</p>
+              <p className="mt-1 font-black">{formatMoney(item.total)}</p>
+            </div>
+          ))}
+        </div>
+      )}
       <div className="mt-7 grid gap-4 rounded-2xl border border-white/[.07] bg-[#141419] p-6 md:grid-cols-2">
         <AdminField label="Нэр">
           <input value={title} onChange={(event) => setTitle(event.target.value)} maxLength={80} placeholder="Жишээ нь Facebook зар" className="admin-input" />
@@ -1817,7 +1934,21 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
             {expenseCategories.map((item) => <option key={item}>{item}</option>)}
           </select>
         </AdminField>
-        <AdminField label="Огноо">
+        <AdminField label="Давтамж">
+          <select value={frequency} onChange={(event) => setFrequency(event.target.value as ExpenseFrequency)} className="admin-input">
+            <option value="once">Нэг удаа</option>
+            <option value="monthly">Сар бүр тогтмол</option>
+            <option value="custom">Давтамжит</option>
+          </select>
+        </AdminField>
+        {frequency === "custom" && (
+          <AdminField label="Алхам">
+            <select value={intervalMonths} onChange={(event) => setIntervalMonths(Number(event.target.value) as (typeof expenseIntervals)[number])} className="admin-input">
+              {expenseIntervals.map((item) => <option key={item} value={item}>{item} сар тутам</option>)}
+            </select>
+          </AdminField>
+        )}
+        <AdminField label={frequency === "once" ? "Огноо" : "Эхлэх огноо"}>
           <input value={spentOn} onChange={(event) => setSpentOn(event.target.value)} type="date" className="admin-input" />
         </AdminField>
         <div className="md:col-span-2">
@@ -1826,17 +1957,29 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
           </AdminField>
         </div>
         <div className="md:col-span-2">
+          <AdminField label="Төлбөрийн баримт (PDF)">
+            <FilePicker key={receiptKey} accept="application/pdf" fileName={receiptFile?.name ?? ""} emptyLabel="PDF сонгоогүй" buttonLabel="PDF хавсаргах" onFile={pickReceipt} />
+          </AdminField>
+        </div>
+        <div className="md:col-span-2">
           <button disabled={busy || !title.trim() || !amount} onClick={create} className="h-11 rounded-xl bg-white px-5 text-xs font-extrabold text-black disabled:opacity-40">Бүртгэх</button>
         </div>
       </div>
-      <div className="mt-6 overflow-x-auto rounded-2xl border border-white/[.07]">
-        <table className="w-full min-w-[760px] text-left text-xs">
+      <div className="mt-6 flex flex-wrap gap-2">
+        {([["all", "Бүгд"], ["once", "Нэг удаа"], ["monthly", "Сар бүр"], ["custom", "Давтамжит"]] as const).map(([value, label]) => (
+          <button key={value} onClick={() => setFrequencyFilter(value)} className={`rounded-full px-3 py-1.5 text-[11px] font-bold ${frequencyFilter === value ? "bg-white text-black" : "bg-white/[.06] text-zinc-400"}`}>{label}</button>
+        ))}
+      </div>
+      <div className="mt-4 overflow-x-auto rounded-2xl border border-white/[.07]">
+        <table className="w-full min-w-[980px] text-left text-xs">
           <thead className="bg-white/[.03] text-[10px] uppercase tracking-[.16em] text-zinc-500">
             <tr>
               <th className="px-5 py-3 font-bold">Огноо</th>
               <th className="px-5 py-3 font-bold">Нэр</th>
               <th className="px-5 py-3 font-bold">Ангилал</th>
+              <th className="px-5 py-3 font-bold">Давтамж</th>
               <th className="px-5 py-3 font-bold">Дүн</th>
+              <th className="px-5 py-3 font-bold">Баримт</th>
               <th className="px-5 py-3 font-bold" />
             </tr>
           </thead>
@@ -1846,18 +1989,36 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
                 <td className="px-5 py-4 text-zinc-400">{spentLabel(expense.spentOn)}</td>
                 <td className="px-5 py-4">
                   <b>{expense.title}</b>
+                  {expense.source === "salary" ? <p className="mt-1 text-zinc-500">Автомат цалин</p> : null}
                   {expense.note ? <p className="mt-1 text-zinc-500">{expense.note}</p> : null}
                 </td>
                 <td className="px-5 py-4 text-zinc-400">{expense.category}</td>
+                <td className="px-5 py-4 text-zinc-400">{expenseFrequencyLabel(expense.frequency, expense.intervalMonths)}</td>
                 <td className="px-5 py-4 font-bold">{formatMoney(expense.amount)}</td>
+                <td className="px-5 py-4">
+                  <div className="flex flex-wrap items-center gap-3">
+                    {expense.receiptPath ? <button onClick={() => openReceipt(expense.id)} className="font-bold text-zinc-200">Харах</button> : null}
+                    <label className="cursor-pointer font-bold text-zinc-400">
+                      {expense.receiptPath ? "Солих" : "PDF"}
+                      <input type="file" accept="application/pdf" disabled={busy} className="sr-only" onChange={(event) => {
+                        const file = event.target.files?.[0] ?? null;
+                        event.target.value = "";
+                        if (file) attach(expense, file);
+                      }} />
+                    </label>
+                  </div>
+                </td>
                 <td className="px-5 py-4 text-right">
-                  <button onClick={() => setPending(expense)} className="font-bold text-red-400">Устгах</button>
+                  <div className="flex justify-end gap-3">
+                    {expense.templateId ? <button onClick={() => setPending({ expense, stop: true })} className="font-bold text-zinc-300">Зогсоох</button> : null}
+                    <button onClick={() => setPending({ expense, stop: false })} className="font-bold text-red-400">Устгах</button>
+                  </div>
                 </td>
               </tr>
             ))}
-            {!expenses.length && (
+            {!visible.length && (
               <tr>
-                <td colSpan={5} className="px-5 py-8 text-sm text-zinc-500">Бүртгэсэн зардал алга.</td>
+                <td colSpan={7} className="px-5 py-8 text-sm text-zinc-500">{expenses.length ? "Энэ шүүлтэд зардал алга." : showAll ? "Бүртгэсэн зардал алга." : "Энэ сард зардал алга."}</td>
               </tr>
             )}
           </tbody>
@@ -1866,9 +2027,9 @@ function ExpensesAdmin({ notify }: { notify: (message: string) => void }) {
       <TablePager pager={list} />
       {pending && (
         <ConfirmModal
-          title="Зардал устгах уу?"
-          body={`${pending.title} · ${formatMoney(pending.amount)}`}
-          confirmLabel="Устгах"
+          title={pending.stop ? "Цааш зогсоох уу?" : "Зардал устгах уу?"}
+          body={pending.stop ? `${pending.expense.title} энэ сардаа үлдэнэ. Дараагийн сарууд зогсоно.` : `${pending.expense.title} · ${formatMoney(pending.expense.amount)}`}
+          confirmLabel={pending.stop ? "Зогсоох" : "Устгах"}
           busy={busy}
           onCancel={() => setPending(null)}
           onConfirm={() => remove(pending)}
@@ -2246,12 +2407,14 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
     const key = `${adminId}_${line.id}`;
     setBusyKey(key);
     try {
-      const saved = await adminFetch<{ paid: boolean; paidAt: number }>("/api/admin/salary", {
+      const saved = await adminFetch<{ paid: boolean; paidAt: number; expense: "added" | "removed" | "none" }>("/api/admin/salary", {
         method: "POST",
         body: JSON.stringify({ adminId, cycleId: line.id, paid: !line.paid }),
       });
       onUpdated(adminId, line.id, saved.paid, saved.paidAt);
-      notify(saved.paid ? "Цалин олгосонд тэмдэглэлээ." : "Цалин хүлээгдэж буй боллоо.");
+      notify(saved.paid
+        ? saved.expense === "added" ? "Цалин олгосонд тэмдэглэж, зардалд нэмлээ." : "Цалин олгосонд тэмдэглэлээ."
+        : saved.expense === "removed" ? "Цалин хүлээгдэж буй боллоо. Зардлаас хаслаа." : "Цалин хүлээгдэж буй боллоо.");
     } catch (error) {
       notify(error instanceof Error ? error.message : "Цалингийн төлөв солигдсонгүй.");
     } finally {
@@ -2325,7 +2488,7 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
   return (
     <div>
       <h2 className="text-2xl font-black">Цалин</h2>
-      <p className="mt-1 max-w-3xl text-sm text-zinc-600">2026 оны 10 сараас хойших цикл. Бүтээгч бүрийн одоогийн болон сүүлд хаагдсан дүн. Төлөв дээр дарж олгосон эсвэл хүлээгдэж буй болгоно. Хуучин циклийг мөрөө дэлгээд тэмдэглэнэ.</p>
+      <p className="mt-1 max-w-3xl text-sm text-zinc-600">2026 оны 10 сараас хойших цикл. Бүтээгч бүрийн одоогийн болон сүүлд хаагдсан дүн. Төлөв дээр дарж олгосон эсвэл хүлээгдэж буй болгоно. Олгосон гэж тэмдэглэхэд 15 эсвэл 30-ны дүн тухайн сарын цалингийн зардалд автоматаар орно. Хуучин циклийг мөрөө дэлгээд тэмдэглэнэ.</p>
       <div className="mt-5 overflow-x-auto rounded-2xl border border-white/[.07] bg-[#141419]">
         <table className="w-full min-w-[980px] text-left text-xs">
           <thead className="border-b border-white/[.07] text-zinc-600">

@@ -97,6 +97,11 @@ export function salaryPayoutDocId(adminId: string, cycleId: string) {
   return `${adminId}_${cycleId}`;
 }
 
+export function salaryPayoutDate(cycle: Pick<SalaryCycle, "payoutAt">) {
+  const parts = ubParts(cycle.payoutAt);
+  return `${parts.year}-${pad(parts.month)}-${pad(parts.day)}`;
+}
+
 export function salaryCycleAt(year: number, month: number, half: "a" | "b"): SalaryCycle {
   const last = daysInMonth(year, month);
   if (half === "a") {
