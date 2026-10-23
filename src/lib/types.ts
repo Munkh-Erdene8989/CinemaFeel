@@ -45,7 +45,7 @@ export type StaffAdmin = {
   cornerNameEdits: number;
 };
 
-export const CREATOR_FEE = 10000;
+export const CREATOR_FEE = 39900;
 
 export const creatorContentTypes = ["Short drama", "Романтик", "Драма", "Комеди", "Триллер", "Бусад"] as const;
 

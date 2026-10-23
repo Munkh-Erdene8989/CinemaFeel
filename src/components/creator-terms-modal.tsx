@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, type ReactNode } from "react";
+import { formatMoney } from "@/lib/format";
+import { CREATOR_FEE } from "@/lib/types";
 import { Logo } from "./icons";
 import { useOverlayMotion } from "./motion";
 
-const fee = "10,000₮";
+const fee = formatMoney(CREATOR_FEE);
 
 const splits = [
   ["Шууд борлуулалт", "80%", "20% систем ашигласны хураамж"],
