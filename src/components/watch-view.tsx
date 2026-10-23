@@ -14,6 +14,7 @@ import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
 import { MediaImage } from "./media-image";
 import { EmailPromptModal } from "./email-prompt-modal";
+import { FilmDescription } from "./film-modal";
 import { Icon } from "./icons";
 import { MatureGate, useMatureConsent } from "./mature-gate";
 import { usePulse } from "./motion";
@@ -25,7 +26,7 @@ function phoneOnlyAccount(email?: string | null, phone?: string | null) {
 
 export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { seriesId: string; episodeNumber: number; initialFilm?: Series | null }) {
   const router = useRouter();
-  const { series, user, profile, owned, subscribed, openAuth, openFilm, beginCheckout, ready, homeHref } = useSite();
+  const { series, user, profile, owned, subscribed, openAuth, beginCheckout, ready, homeHref } = useSite();
   const { allowed, allow } = useMatureConsent();
   const fromCatalog = series.find((item) => item.id === seriesId) ?? null;
   const film = ready ? fromCatalog : (fromCatalog ?? initialFilm);
@@ -204,6 +205,31 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
 
   usePulse(loading && !url && !youtube, loadingRef);
 
+  const leave = () => {
+    const finish = () => {
+      if (window.history.length > 1) router.back();
+      else router.push(homeHref);
+    };
+    const fullscreen = document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
+    const exit = document.exitFullscreen || (document as Document & { webkitExitFullscreen?: () => Promise<void> }).webkitExitFullscreen;
+    if (fullscreen && exit) {
+      Promise.resolve(exit.call(document)).finally(finish);
+      return;
+    }
+    finish();
+  };
+
+  useEffect(() => {
+    const video = stageRef.current?.querySelector("video");
+    if (!video || !url) return;
+    const start = video.play();
+    if (!start) return;
+    start.catch(() => {
+      video.muted = true;
+      video.play().catch(() => undefined);
+    });
+  }, [url]);
+
   const episodeIndex = episodes.findIndex((item) => item.id === current?.id);
   const previousEpisode = episodeIndex > 0 ? episodes[episodeIndex - 1] : null;
   const nextEpisode = episodeIndex >= 0 && episodeIndex < episodes.length - 1 ? episodes[episodeIndex + 1] : null;
@@ -229,7 +255,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
 
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
-      {!youtube && <button data-rise onClick={() => openFilm(film)} className="text-xs font-bold text-zinc-500 hover:text-white">← {film.title}</button>}
+      <button type="button" data-rise onClick={leave} className="relative z-20 inline-flex h-10 items-center rounded-full bg-white/10 px-4 text-sm font-bold text-white hover:bg-white/15">← Буцах</button>
       <div className={youtube ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
         <div data-rise data-delay="0.06" className={youtube ? "w-full bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
           {youtube ? (
@@ -242,7 +268,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
               autoplay
               title={film?.title}
               episodeLabel={current ? `${current.number}-р анги` : undefined}
-              onBack={() => film && openFilm(film)}
+              onBack={leave}
               onEpisodes={() => document.getElementById("watch-episodes")?.scrollIntoView({ behavior: "smooth", block: "start" })}
               onPrevEpisode={previousEpisode ? () => router.push(`/watch/${seriesId}/${previousEpisode.number}`) : undefined}
               onNextEpisode={nextEpisode ? () => router.push(`/watch/${seriesId}/${nextEpisode.number}`) : undefined}
@@ -259,6 +285,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 key={current?.id}
                 src={url}
                 poster={film.image || undefined}
+                autoPlay
                 controls
                 controlsList="nodownload"
                 disablePictureInPicture
@@ -307,7 +334,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
           <div data-rise data-delay="0.12">
             <p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff536a]">{film?.genre}</p>
             <h1 className="mt-2 text-3xl font-black">{film?.title}</h1>
-            <p className="mt-3 text-sm leading-7 text-zinc-400">{film?.description}</p>
+            <FilmDescription text={film?.description || ""} className="mt-3" />
           </div>
           <h2 className="mt-8 text-sm font-black uppercase tracking-[.16em] text-zinc-500">Ангиуд</h2>
           <div className="mt-4 space-y-2">

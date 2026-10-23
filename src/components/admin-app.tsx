@@ -1825,7 +1825,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
         </div>
         <section className="mt-8 rounded-3xl border border-white/[.08] bg-black/25 p-4 sm:p-5">
           <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-400">Reel трейлер</p>
-          <p className="mt-2 text-xs leading-5 text-zinc-500">Богино хувилбар оруулбал Reel цэсэнд энэ файл гарна. Оруулаагүй файлтай кино Reel-д орохгүй. YouTube анги бол эхний 5 минут автоматаар гарна.</p>
+          <p className="mt-2 text-xs leading-5 text-zinc-500">Богино хувилбар оруулбал Reel цэсэнд энэ файл гарна. Оруулаагүй кино, тэр дундаа YouTube анги, Reel-д орохгүй.</p>
           {reelLocal || reelUrl ? (
             <div className="mt-4 overflow-hidden rounded-2xl border border-white/10 bg-black">
               <video key={reelLocal || reelUrl} src={reelLocal || reelUrl} controls playsInline preload="metadata" className="aspect-video max-h-64 w-full bg-black object-contain" />
@@ -1837,8 +1837,6 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
                 <button type="button" onClick={() => void clearReel()} disabled={reelProgress !== null} className="shrink-0 text-xs font-bold text-red-400 disabled:opacity-40">Хасах</button>
               </div>
             </div>
-          ) : episodes.some((episode) => episode.source === "youtube" || episode.youtubeId) ? (
-            <p className="mt-3 text-xs font-bold text-zinc-400">YouTube ангитай тул Reel-д эхний 5 минут гарна.</p>
           ) : null}
           <div className="mt-4">
             <FilePicker accept="video/mp4,video/webm,video/quicktime" disabled={reelProgress !== null} buttonLabel={reelUrl || reelLocal ? "Солих" : "Богино хувилбар"} emptyLabel="Оруулаагүй" fileName={reelName} onFile={(file) => file && void uploadReel(file)} />

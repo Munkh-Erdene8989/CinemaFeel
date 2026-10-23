@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { WEEKLY_PRICE, type CheckoutMode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
@@ -68,7 +68,7 @@ export function FilmModal({
   }, [film.id, film.title]);
 
   return (
-    <Modal onClose={onClose} wide size={preview ? "xl" : undefined}>
+    <Modal onClose={onClose} wide flush size={preview ? "xl" : undefined}>
       <div className={preview ? "grid lg:grid-cols-[1.35fr_.9fr]" : "grid md:grid-cols-[.8fr_1.2fr]"}>
         {preview ? (
           <div className="bg-black p-3 sm:p-4">
@@ -77,13 +77,15 @@ export function FilmModal({
               startAt={preview.startAt}
               subtitleUrl={preview.subtitleUrl}
               subtitleOffsetMs={preview.subtitleOffsetMs}
+              autoplay
               title={preview.title || film.title}
               episodeLabel={preview.episodeLabel}
+              onBack={onClose}
               watermark={watermark}
             />
           </div>
         ) : (
-        <div className="relative min-h-72 md:min-h-[520px]">
+        <div className="relative h-52 md:h-auto md:min-h-[520px]">
           <img src={film.image} alt={film.title} className="absolute inset-0 h-full w-full object-cover" />
           <div className="absolute inset-0 bg-gradient-to-t from-[#151519] via-transparent to-transparent md:bg-gradient-to-r md:from-transparent md:to-[#151519]" />
           {film.translation ? <span className="absolute bottom-4 left-4 rounded-full bg-[#ff3d56] px-2.5 py-1 text-[10px] font-black text-white">{film.translation}</span> : null}
@@ -99,7 +101,7 @@ export function FilmModal({
           )}
         </div>
         )}
-        <div className="relative flex flex-col justify-center p-7 md:p-10">
+        <div className="relative flex flex-col justify-center p-5 md:p-10">
           <div className="flex gap-2">
             {film.access === "free" && <span className="rounded-full bg-emerald-400/15 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-emerald-400">Үнэгүй</span>}
             <span className="rounded-full bg-white/10 px-3 py-1 text-[10px] font-black uppercase tracking-wider text-zinc-300">{film.year}</span>
@@ -107,7 +109,7 @@ export function FilmModal({
           </div>
           <h2 className="mt-5 text-3xl font-black tracking-tight">{film.title}</h2>
           <p className="mt-3 text-xs font-semibold text-zinc-500">{film.genre} · {film.episodes} анги · {film.age}</p>
-          <p className="mt-5 text-sm leading-7 text-zinc-400">{film.description}</p>
+          <FilmDescription key={film.id} text={film.description} />
           <div className="mt-7 border-t border-white/[0.07] pt-6">
             {checking ? (
               <p className="text-center text-sm font-bold text-zinc-400">Эрх шалгаж байна...</p>
@@ -141,5 +143,50 @@ export function FilmModal({
         </div>
       </div>
     </Modal>
+  );
+}
+
+export function FilmDescription({ text, className = "mt-5" }: { text: string; className?: string }) {
+  const [open, setOpen] = useState(false);
+  const [overflows, setOverflows] = useState(false);
+  const ref = useRef<HTMLParagraphElement>(null);
+  const copy = text.trim();
+  const expandable = !open && overflows;
+
+  useEffect(() => {
+    const node = ref.current;
+    if (!node || !copy) return;
+    const check = () => {
+      const desktop = window.matchMedia("(min-width: 768px)").matches;
+      setOverflows(!desktop && !open && node.scrollHeight > node.clientHeight + 1);
+    };
+    check();
+    const observer = new ResizeObserver(check);
+    observer.observe(node);
+    return () => observer.disconnect();
+  }, [copy, open]);
+
+  if (!copy) return null;
+
+  const reveal = () => {
+    if (!expandable) return;
+    setOpen(true);
+  };
+
+  return (
+    <div className={className}>
+      <p
+        ref={ref}
+        onClick={reveal}
+        className={`text-sm leading-6 text-zinc-400 md:leading-7 ${open ? "" : "max-md:line-clamp-3"} ${expandable ? "cursor-pointer" : ""}`}
+      >
+        {copy}
+      </p>
+      {expandable ? (
+        <button type="button" onClick={reveal} className="mt-1 text-xs font-bold text-zinc-200 md:hidden">
+          Дэлгэрэнгүй
+        </button>
+      ) : null}
+    </div>
   );
 }

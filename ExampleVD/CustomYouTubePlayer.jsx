@@ -185,6 +185,8 @@ function injectStyles() {
       font-family: inherit;
     }
     .cyp-top {
+      position: relative;
+      z-index: 5;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -239,7 +241,8 @@ function injectStyles() {
       overflow: hidden;
     }
     .cyp-iframe-slot,
-    .cyp-iframe-slot iframe {
+    .cyp-iframe-slot iframe,
+    .cyp-stage > iframe {
       position: absolute;
       inset: 0;
       width: 100%;
@@ -550,6 +553,8 @@ export default function CustomYouTubePlayer({
     setCurrentTime(Math.max(0, startAt));
     setIsPlaying(false);
 
+    let started = false;
+    let kickTimer = 0;
     loadYouTubeIframeAPI().then((YT) => {
       if (cancelled || !playerSlotRef.current) return;
 
@@ -570,17 +575,38 @@ export default function CustomYouTubePlayer({
         },
         events: {
           onReady: (event) => {
+            if (cancelled) return;
             silenceYoutubeCaptions(event.target);
             setDuration(event.target.getDuration());
             setVolume(event.target.getVolume());
             const time = event.target.getCurrentTime?.() ?? startAt;
             setCurrentTime(time);
+            if (!autoplay) return;
+            try {
+              event.target.playVideo();
+            } catch {
+              /* playback starts on the muted fallback */
+            }
+            kickTimer = window.setTimeout(() => {
+              if (cancelled || started || !playerRef.current?.playVideo) return;
+              const state = playerRef.current.getPlayerState?.();
+              const playerState = window.YT?.PlayerState;
+              if (state === playerState?.PLAYING || state === playerState?.BUFFERING) return;
+              try {
+                playerRef.current.mute();
+                setMuted(true);
+                playerRef.current.playVideo();
+              } catch {
+                /* the play button stays if the browser blocks both attempts */
+              }
+            }, 800);
           },
           onStateChange: (event) => {
             silenceYoutubeCaptions(event.target);
             const state = window.YT?.PlayerState;
             if (!state) return;
             if (event.data === state.PLAYING) {
+              started = true;
               setIsPlaying(true);
               setDuration(event.target.getDuration());
             } else if (event.data === state.PAUSED || event.data === state.ENDED) {
@@ -593,6 +619,7 @@ export default function CustomYouTubePlayer({
 
     return () => {
       cancelled = true;
+      window.clearTimeout(kickTimer);
       if (playerRef.current && playerRef.current.destroy) {
         playerRef.current.destroy();
       }

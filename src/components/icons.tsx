@@ -56,15 +56,15 @@ export function Logo({ onClick, href = "/", header = false }: { onClick?: () => 
   );
 }
 
-export function Modal({ children, onClose, wide = false, priority = false, size }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "lg" | "xl" }) {
+export function Modal({ children, onClose, wide = false, priority = false, size, flush = false }: { children: React.ReactNode; onClose: () => void; wide?: boolean; priority?: boolean; size?: "md" | "lg" | "xl"; flush?: boolean }) {
   const width = size === "xl" ? "max-w-6xl" : size === "lg" ? "max-w-4xl" : wide ? "max-w-3xl" : "max-w-md";
   const { backdropRef, panelRef, requestClose } = useOverlayMotion(onClose);
   const layer = priority ? "z-[80]" : "z-[70]";
   return (
     <>
       <div ref={backdropRef} className={`fixed inset-0 ${layer} bg-black/85 backdrop-blur-md`} />
-      <div className={`fixed inset-0 ${layer} grid place-items-center overflow-y-auto p-4`} role="dialog" aria-modal="true">
-        <div ref={panelRef} className={`relative my-6 w-full ${width} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl`}>
+      <div className={`fixed inset-0 ${layer} grid overflow-y-auto p-3 md:p-4 ${flush ? "items-start md:place-items-center" : "place-items-center"}`} role="dialog" aria-modal="true">
+        <div ref={panelRef} className={`relative w-full ${width} overflow-hidden rounded-3xl border border-white/10 bg-[#151519] shadow-2xl ${flush ? "my-3 md:my-6" : "my-6"}`}>
           <button onClick={requestClose} className="absolute right-4 top-4 z-10 grid h-9 w-9 place-items-center rounded-full bg-black/30 text-zinc-300 backdrop-blur-md hover:bg-white/10" aria-label="Хаах">
             <Icon name="close" />
           </button>
