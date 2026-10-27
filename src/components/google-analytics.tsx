@@ -1,16 +1,27 @@
 "use client";
 
+import { getAnalytics, initializeAnalytics, isSupported, logEvent, type Analytics } from "firebase/analytics";
 import { usePathname, useSearchParams } from "next/navigation";
-import Script from "next/script";
-import { Suspense, useEffect, useRef } from "react";
+import { Suspense, useEffect } from "react";
+import { firebaseConfigured, firebaseMeasurementId, getFirebaseApp } from "@/lib/firebase";
 
-const GA_MEASUREMENT_ID = "G-FL1LCLCLXQ";
+let analyticsPromise: Promise<Analytics | null> | null = null;
 
-declare global {
-  interface Window {
-    dataLayer?: unknown[];
-    gtag?: (...args: unknown[]) => void;
+function clientAnalytics() {
+  if (!analyticsPromise) {
+    analyticsPromise = isSupported()
+      .then((supported) => {
+        if (!supported || !firebaseConfigured() || !firebaseMeasurementId()) return null;
+        const app = getFirebaseApp();
+        try {
+          return initializeAnalytics(app, { config: { send_page_view: false } });
+        } catch {
+          return getAnalytics(app);
+        }
+      })
+      .catch(() => null);
   }
+  return analyticsPromise;
 }
 
 function pagePath(pathname: string, searchParams: URLSearchParams) {
@@ -21,18 +32,20 @@ function pagePath(pathname: string, searchParams: URLSearchParams) {
 function GoogleAnalyticsPageView() {
   const pathname = usePathname();
   const searchParams = useSearchParams();
-  const skipInitial = useRef(true);
 
   useEffect(() => {
-    if (skipInitial.current) {
-      skipInitial.current = false;
-      return;
-    }
-    window.gtag?.("event", "page_view", {
-      page_path: pagePath(pathname, searchParams),
-      page_location: window.location.href,
-      page_title: document.title,
+    let cancelled = false;
+    clientAnalytics().then((analytics) => {
+      if (!analytics || cancelled) return;
+      logEvent(analytics, "page_view", {
+        page_path: pagePath(pathname, searchParams),
+        page_location: window.location.href,
+        page_title: document.title,
+      });
     });
+    return () => {
+      cancelled = true;
+    };
   }, [pathname, searchParams]);
 
   return null;
@@ -40,18 +53,8 @@ function GoogleAnalyticsPageView() {
 
 export function GoogleAnalytics() {
   return (
-    <>
-      <Script src={`https://www.googletagmanager.com/gtag/js?id=${GA_MEASUREMENT_ID}`} strategy="lazyOnload" />
-      <Script id="google-analytics" strategy="lazyOnload">
-        {`window.dataLayer = window.dataLayer || [];
-function gtag(){dataLayer.push(arguments);}
-window.gtag = gtag;
-gtag('js', new Date());
-gtag('config', '${GA_MEASUREMENT_ID}');`}
-      </Script>
-      <Suspense fallback={null}>
-        <GoogleAnalyticsPageView />
-      </Suspense>
-    </>
+    <Suspense fallback={null}>
+      <GoogleAnalyticsPageView />
+    </Suspense>
   );
 }
