@@ -7,24 +7,58 @@ import { useGSAP } from "@gsap/react";
 import { alreadyEntitled } from "@/lib/entitlement";
 import { WEEKLY_PRICE, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
-import { MATURE_CATEGORY, coverFilm, isMatureLabel, matureCatalog, publicCatalog, readMatureConsent } from "@/lib/mature";
+import { coverFilm, isMatureLabel, publicCatalog } from "@/lib/mature";
 import { FilmCard } from "./film-card";
 import { MediaImage } from "./media-image";
 import { CatalogSkeleton, HeroSkeleton } from "./content-skeleton";
 import { Icon } from "./icons";
-import { MatureGate, useMatureConsent } from "./mature-gate";
 import { prefersReducedMotion } from "./motion";
 import { useSite } from "./site-provider";
 
+function genreKey(value: string) {
+  return value.trim().toLocaleLowerCase("mn");
+}
+
+function catalogSections(films: Series[], genres: string[]) {
+  const listed = genres.filter((genre) => genre.trim() && !isMatureLabel(genre));
+  const listedKeys = new Set(listed.map(genreKey));
+  const sections = listed
+    .map((name) => ({ name, films: films.filter((film) => genreKey(film.genre) === genreKey(name)) }))
+    .filter((section) => section.films.length);
+  const extras: { name: string; films: Series[] }[] = [];
+  const extraAt = new Map<string, number>();
+  for (const film of films) {
+    const key = genreKey(film.genre);
+    if (!key || listedKeys.has(key)) continue;
+    const at = extraAt.get(key);
+    if (at === undefined) {
+      extraAt.set(key, extras.length);
+      extras.push({ name: film.genre.trim(), films: [film] });
+    } else extras[at].films.push(film);
+  }
+  return [...sections, ...extras];
+}
+
+function FilmShelf({ films, entitled, onOpen }: { films: Series[]; entitled: (film: Series) => boolean; onOpen: (film: Series) => void }) {
+  return (
+    <div className="grid grid-cols-3 gap-x-2 gap-y-6 sm:gap-x-3 md:gap-x-5 lg:grid-cols-6">
+      {films.map((film, index) => (
+        <FilmCard key={film.id} film={film} owned={entitled(film)} delay={(index % 6) * 0.05} onClick={() => onOpen(film)} />
+      ))}
+    </div>
+  );
+}
+
 export function HomeView({ initialFeatured = null }: { initialFeatured?: Series | null }) {
   const { series, owned, subscribed, openFilm, beginCheckout, settings, ready, profile } = useSite();
-  const { allowed, allow } = useMatureConsent();
   const [category, setCategory] = useState("Бүгд");
-  const [askMature, setAskMature] = useState(false);
-  const categories = ["Бүгд", ...settings.genres.filter((genre) => !isMatureLabel(genre)), MATURE_CATEGORY];
+  const categories = ["Бүгд", ...settings.genres.filter((genre) => !isMatureLabel(genre))];
   const active = categories.includes(category) ? category : "Бүгд";
   const safe = publicCatalog(series);
-  const visible = active === MATURE_CATEGORY ? (allowed ? matureCatalog(series) : []) : active === "Бүгд" ? safe : safe.filter((film) => film.genre === active);
+  const visible = active === "Бүгд" ? safe : safe.filter((film) => genreKey(film.genre) === genreKey(active));
+  const grouped = active === "Бүгд";
+  const groups = grouped ? catalogSections(safe, settings.genres) : [];
+  const entitled = (film: Series) => alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId });
   const featured = ready ? (coverFilm(series) ?? null) : initialFeatured;
   const cover = featured?.cover || featured?.image || "";
   const titleWords = featured?.title.split(" ").filter(Boolean) ?? [];
@@ -118,7 +152,7 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
             ) : (
               <div>
                 <h1 className="text-4xl font-black tracking-tight md:text-5xl">{series.length ? "Нүүрэнд онцлох кино алга" : "Нийтлэгдсэн кино алга"}</h1>
-                <p className="mt-4 max-w-md text-sm leading-7 text-zinc-500">{series.length ? "+18 контент тусдаа ангилалд байна." : "Шинэ контент нэмэгдэхэд энд харагдана."}</p>
+                <p className="mt-4 max-w-md text-sm leading-7 text-zinc-500">Шинэ контент нэмэгдэхэд энд харагдана.</p>
               </div>
             )}
           </div>
@@ -144,7 +178,7 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
         <div data-rise className="flex items-end justify-between">
           <div>
             <p className="mb-2 text-[11px] font-bold uppercase tracking-[.2em] text-[#ff536a]">Сонголтоо хийгээрэй</p>
-            <h2 className="text-2xl font-black md:text-3xl">Одоо трэнд болж буй</h2>
+            <h2 className="text-2xl font-black md:text-3xl">{grouped ? "Ангиллаар" : active}</h2>
           </div>
           <span className="text-xs text-zinc-600">Шинэ анги өдөр бүр</span>
         </div>
@@ -155,13 +189,6 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
               data-rise
               data-delay={String((index % 8) * 0.04)}
               onClick={(event) => {
-                if (item === MATURE_CATEGORY && !allowed) {
-                  if (readMatureConsent()) {
-                    allow();
-                    setCategory(item);
-                  } else setAskMature(true);
-                  return;
-                }
                 setCategory(item);
                 if (!prefersReducedMotion()) animate(event.currentTarget, { scale: [0.94, 1], duration: 320, ease: "outBack", composition: "replace" });
               }}
@@ -171,23 +198,31 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
             </button>
           ))}
         </div>
-        <div ref={gridRef} className="mt-6 grid grid-cols-3 gap-x-2 gap-y-6 sm:gap-x-3 md:gap-x-5 lg:grid-cols-6">
-          {visible.map((film, index) => (
-            <FilmCard key={film.id} film={film} owned={alreadyEntitled(film, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })} delay={(index % 6) * 0.05} onClick={() => openFilm(film)} />
-          ))}
+        <div ref={gridRef} className="mt-8">
+          {grouped ? (
+            groups.length ? (
+              <div className="space-y-14">
+                {groups.map((section) => (
+                  <div key={section.name}>
+                    <div className="mb-5 flex items-end justify-between gap-4">
+                      <h3 className="text-xl font-black tracking-tight md:text-2xl">{section.name}</h3>
+                      <span className="shrink-0 text-xs text-zinc-600">{section.films.length} кино</span>
+                    </div>
+                    <FilmShelf films={section.films} entitled={entitled} onOpen={openFilm} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p data-rise className="py-16 text-center text-sm text-zinc-500">Нийтлэгдсэн кино алга.</p>
+            )
+          ) : (
+            <>
+              <FilmShelf films={visible} entitled={entitled} onOpen={openFilm} />
+              {!visible.length && <p data-rise className="py-16 text-center text-sm text-zinc-500">Энэ ангилалд нийтлэгдсэн кино алга.</p>}
+            </>
+          )}
         </div>
-        {!visible.length && <p data-rise className="py-16 text-center text-sm text-zinc-500">Энэ ангилалд нийтлэгдсэн кино алга.</p>}
       </section> : <CatalogSkeleton />}
-      {askMature && (
-        <MatureGate
-          onDecline={() => setAskMature(false)}
-          onAccept={() => {
-            allow();
-            setAskMature(false);
-            setCategory(MATURE_CATEGORY);
-          }}
-        />
-      )}
     </>
   );
 }
