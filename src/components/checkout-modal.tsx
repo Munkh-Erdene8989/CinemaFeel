@@ -12,6 +12,7 @@ export function CheckoutModal({
   mode,
   film,
   monthlyPrice,
+  initialCode = "",
   onClose,
   onPaid,
   onModeChange,
@@ -19,6 +20,7 @@ export function CheckoutModal({
   mode: CheckoutMode;
   film: Series | null;
   monthlyPrice: number;
+  initialCode?: string;
   onClose: () => void;
   onPaid: () => void;
   onModeChange?: (mode: CheckoutMode) => void;
@@ -38,8 +40,35 @@ export function CheckoutModal({
     setInvoice(null);
     setError("");
     setApplied(null);
-    setCode("");
-  }, [mode, film?.id]);
+    setCode(initialCode);
+  }, [mode, film?.id, initialCode]);
+
+  useEffect(() => {
+    if (!initialCode) return;
+    let cancel = false;
+    const apply = async () => {
+      const token = await clientAuth().currentUser?.getIdToken();
+      if (!token || cancel) return;
+      const response = await fetch("/api/discount/preview", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({ mode, seriesId: film?.id ?? null, code: initialCode }),
+      });
+      const data = (await response.json()) as { error?: string; code?: string; percent?: number; originalAmount?: number; amount?: number };
+      if (cancel) return;
+      if (!response.ok || !data.code || data.amount == null || data.originalAmount == null || data.percent == null) {
+        setApplied(null);
+        setError(data.error || "Хөнгөлөлтийн код олдсонгүй.");
+        return;
+      }
+      setError("");
+      setApplied({ code: data.code, percent: data.percent, originalAmount: data.originalAmount, amount: data.amount });
+    };
+    void apply();
+    return () => {
+      cancel = true;
+    };
+  }, [initialCode, mode, film?.id]);
 
   const createInvoice = async () => {
     setLoading(true);
@@ -53,7 +82,7 @@ export function CheckoutModal({
     const response = await fetch("/api/qpay/invoice", {
       method: "POST",
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-      body: JSON.stringify({ mode, seriesId: film?.id ?? null, code: applied?.code || "" }),
+      body: JSON.stringify({ mode, seriesId: film?.id ?? null, code: applied?.code || code }),
     });
     const data = (await response.json()) as { error?: string; senderInvoiceNo?: string; qrImage?: string; urls?: QPayUrl[]; amount?: number; originalAmount?: number; discountCode?: string; discountPercent?: number };
     setLoading(false);
@@ -182,7 +211,7 @@ export function CheckoutModal({
           </div>
         </div>
         {!invoice ? (
-          <button disabled={loading} onClick={createInvoice} className="mt-6 h-12 w-full rounded-xl bg-white text-sm font-extrabold text-black disabled:opacity-60">
+          <button disabled={loading || Boolean(initialCode && !applied && !error)} onClick={createInvoice} className="mt-6 h-12 w-full rounded-xl bg-white text-sm font-extrabold text-black disabled:opacity-60">
             {loading ? "Нэхэмжлэх үүсгэж байна..." : `${formatMoney(total)} QPay-ээр төлөх`}
           </button>
         ) : (

@@ -19,7 +19,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as { mode?: string; seriesId?: string | null; code?: string };
   const settingsSnap = await adminDb().collection("settings").doc("app").get();
   const monthly = Number(settingsSnap.data()?.price || defaultSettings.price);
-  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly });
+  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly, uid: user.uid });
   if (!quote.ok) return jsonError(quote.error, quote.status);
   if (quote.mode === "single" && quote.seriesId) {
     const seriesSnap = await adminDb().collection("series").doc(quote.seriesId).get();

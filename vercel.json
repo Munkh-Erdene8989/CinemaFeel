@@ -3,6 +3,10 @@
     {
       "path": "/api/cron/rollup-views",
       "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/renewal-mail",
+      "schedule": "0 2 * * *"
     }
   ]
 }

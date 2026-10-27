@@ -38,7 +38,7 @@ type SiteContextValue = {
   homeHref: string;
   openFilm: (film: Series) => void;
   openAuth: () => void;
-  beginCheckout: (mode: CheckoutMode, film?: Series | null) => void;
+  beginCheckout: (mode: CheckoutMode, film?: Series | null, code?: string) => void;
   logout: () => void;
 };
 
@@ -67,7 +67,9 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const [joinOpen, setJoinOpen] = useState(false);
   const [selected, setSelected] = useState<Series | null>(null);
   const [checkout, setCheckout] = useState<CheckoutMode | null>(null);
+  const [checkoutCode, setCheckoutCode] = useState("");
   const [pending, setPending] = useState<Pending>(null);
+  const [pendingCode, setPendingCode] = useState("");
   const [toast, setToast] = useState("");
   const rootRef = useRef<HTMLElement>(null);
   const toastRef = useRef<HTMLDivElement>(null);
@@ -207,7 +209,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       });
   }, [pathname]);
 
-  const beginCheckout = (mode: CheckoutMode, film?: Series | null) => {
+  const beginCheckout = (mode: CheckoutMode, film?: Series | null, code?: string) => {
     const target = film ?? selected;
     if (mode === "single" && target && alreadyEntitled(target, { ownedIds: owned, subscribed, creatorId: profile?.creatorId })) {
       setSelected(null);
@@ -217,6 +219,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
     if (film) setSelected(film);
     if (!user) {
       setPending(mode);
+      setPendingCode(code || "");
       setAuthOpen(true);
       return;
     }
@@ -224,6 +227,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       notify("Таны бүртгэл түр зогссон байна.");
       return;
     }
+    setCheckoutCode(code || "");
     setCheckout(mode);
   };
 
@@ -366,13 +370,18 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             onClose={() => {
               setAuthOpen(false);
               setPending(null);
+              setPendingCode("");
             }}
             onSuccess={() => {
               setAuthOpen(false);
-              if (pending === "single" || pending === "weekly" || pending === "subscription") setCheckout(pending);
+              if (pending === "single" || pending === "weekly" || pending === "subscription") {
+                setCheckoutCode(pendingCode);
+                setCheckout(pending);
+              }
               if (pending === "watch" && selected) router.push(`/watch/${selected.id}/1`);
               if (!pending) notify("Амжилттай нэвтэрлээ.");
               setPending(null);
+              setPendingCode("");
               if (pending === "watch") setSelected(null);
             }}
           />
@@ -399,8 +408,12 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             mode={checkout}
             film={selected}
             monthlyPrice={monthlyPrice}
+            initialCode={checkoutCode}
             onModeChange={setCheckout}
-            onClose={() => setCheckout(null)}
+            onClose={() => {
+              setCheckout(null);
+              setCheckoutCode("");
+            }}
             onPaid={() => {
               setCheckout(null);
               notify("Төлбөр амжилттай. Таны үзэх эрх нээгдлээ.");

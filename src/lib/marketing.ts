@@ -3,11 +3,12 @@ export function normalizeMailFromName(value: unknown) {
   return name || "CinemaFeel";
 }
 
-export function marketingFromSettings(data?: { emailEnabled?: unknown; smsEnabled?: unknown; mailFromName?: unknown } | null) {
+export function marketingFromSettings(data?: { emailEnabled?: unknown; smsEnabled?: unknown; mailFromName?: unknown; renewalMailEnabled?: unknown } | null) {
   return {
     emailEnabled: data?.emailEnabled !== false,
     smsEnabled: data?.smsEnabled !== false,
     mailFromName: normalizeMailFromName(data?.mailFromName),
+    renewalMailEnabled: data?.renewalMailEnabled === true,
   };
 }
 

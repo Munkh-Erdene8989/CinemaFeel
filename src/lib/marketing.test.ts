@@ -14,8 +14,11 @@ test("missing channel flags stay on", () => {
     emailEnabled: true,
     smsEnabled: true,
     mailFromName: "CinemaFeel",
+    renewalMailEnabled: false,
   });
   assert.equal(marketingFromSettings({ emailEnabled: false, smsEnabled: false, mailFromName: "Feel" }).emailEnabled, false);
+  assert.equal(marketingFromSettings({ renewalMailEnabled: true }).renewalMailEnabled, true);
+  assert.equal(marketingFromSettings({ renewalMailEnabled: "yes" }).renewalMailEnabled, false);
 });
 
 test("broadcast requires a channel and its copy", () => {

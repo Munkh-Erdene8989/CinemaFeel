@@ -42,7 +42,7 @@ function escapeHtml(value: string) {
     .replace(/"/g, "&quot;");
 }
 
-function publicSite() {
+export function publicSiteUrl() {
   const configured = (process.env.NEXT_PUBLIC_SITE_URL || "").trim().replace(/\/$/, "");
   if (!configured) return "https://cinemafeel.dev";
   try {
@@ -55,7 +55,7 @@ function publicSite() {
 }
 
 function shell(preheader: string, body: string) {
-  const site = publicSite();
+  const site = publicSiteUrl();
   const logo = `${site}/feel-cinema-logo.png`;
   return `<!DOCTYPE html>
 <html lang="mn">
@@ -267,6 +267,65 @@ type OutboundMail = {
   text: string;
 };
 
+const renewalCopy = {
+  d3: {
+    kicker: "БАГЦ",
+    subject: "3 хоногийн дараа багц чинь дуусна",
+    title: "3 хоног үлдлээ",
+    paragraphs: [
+      "Сайн уу,",
+      "Багцын чинь хугацаа 3 хоногийн дараа дуусах гэж байна. Яарах зүйл байхгүй, санаанд чинь оруулж байгаа юм.",
+      "Үзэж байсан түүх чинь тэндээ байгаа. Үргэлжлүүлээд үзмээр санагдвал багцаа сунгаад л болно.",
+    ],
+    button: "Үзсээр байя",
+  },
+  d1: {
+    kicker: "БАГЦ",
+    subject: "Маргааш багц дуусах нь",
+    title: "Маргааш дуусна",
+    paragraphs: [
+      "Сайн уу,",
+      "Маргааш багцын чинь хугацаа дуусна. Дараагийн анги хүлээж байгаа байх.",
+      "Өнөөдөр сунгавал завсарлагагүй үргэлжилнэ. Зав гарвал хараарай.",
+    ],
+    button: "Багцаа сунгая",
+  },
+  offer: {
+    kicker: "Чамд зориулсан",
+    subject: "Чамд зориулж 20% үлдээсэн",
+    title: "20% хөнгөлөлт",
+    paragraphs: [
+      "Сайн уу,",
+      "Багц дуусаад 3 хонож байна. Эргэж ирэхгүй байхад чинь нэг юм бодогдсон.",
+      "Зөвхөн чамд багцаа 20% хөнгөлөлттэй сунгах боломж үлдээсэн. 24 цаг хүчинтэй. Таалагдвал ашиглаарай, үгүй бол энэ мэйлийг орхиход болно.",
+    ],
+    button: "20%-тай эргэж ирье",
+  },
+} as const;
+
+export function renewalMessage(input: { kind: keyof typeof renewalCopy; link: string; deadline?: string }) {
+  const copy = renewalCopy[input.kind];
+  const paragraphs: string[] = [...copy.paragraphs];
+  if (input.kind === "offer" && input.deadline) paragraphs.push(`Энэ санал ${input.deadline} хүртэл нээлттэй.`);
+  const blocks = paragraphs
+    .map((paragraph) => `<p style="margin:14px 0 0;font-size:15px;line-height:1.7;color:#d4d4d8;">${escapeHtml(paragraph)}</p>`)
+    .join("");
+  const html = shell(
+    paragraphs[1] || copy.subject,
+    `<p style="margin:0;font-size:12px;font-weight:700;letter-spacing:0.16em;color:#ff536a;">${escapeHtml(copy.kicker)}</p>
+     <h1 style="margin:10px 0 0;font-size:30px;line-height:1.15;font-weight:800;">${escapeHtml(copy.title)}</h1>
+     ${blocks}
+     <p style="margin:22px 0 0;">
+       <a href="${escapeHtml(input.link)}" style="display:inline-block;background:#ff3d56;color:#ffffff;font-size:14px;font-weight:800;text-decoration:none;padding:14px 26px;border-radius:12px;">${escapeHtml(copy.button)}</a>
+     </p>`,
+  );
+  return {
+    subject: copy.subject,
+    html,
+    text: [...paragraphs, "", `${copy.button}: ${input.link}`].join("\n"),
+  };
+}
+
 export async function sendResendEmails(recipients: string[], message: OutboundMail, category: string, idempotencyPrefix: string, fromName?: string) {
   const resend = client();
   if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
@@ -288,6 +347,25 @@ export async function sendResendEmails(recipients: string[], message: OutboundMa
     );
     if (error) return { ok: false as const, error: error.message };
   }
+  return { ok: true as const };
+}
+
+export async function sendOneEmail(to: string, message: OutboundMail, idempotencyKey: string, fromName?: string) {
+  const resend = client();
+  if (!resend) return { ok: false as const, error: "Имэйл илгээх тохиргоо дутуу байна." };
+  const key = idempotencyKey.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 64) || "mail";
+  const { error } = await resend.emails.send(
+    {
+      from: displayFrom(fromAddress(), fromName),
+      to: [to],
+      subject: message.subject,
+      html: message.html,
+      text: message.text,
+      tags: [{ name: "category", value: "renewal" }],
+    },
+    { idempotencyKey: key },
+  );
+  if (error) return { ok: false as const, error: error.message };
   return { ok: true as const };
 }
 

@@ -27,6 +27,7 @@ export async function PUT(request: NextRequest) {
       emailEnabled: typeof body.emailEnabled === "boolean" ? body.emailEnabled : current.emailEnabled,
       smsEnabled: typeof body.smsEnabled === "boolean" ? body.smsEnabled : current.smsEnabled,
       mailFromName: body.mailFromName ?? current.mailFromName,
+      renewalMailEnabled: typeof body.renewalMailEnabled === "boolean" ? body.renewalMailEnabled : current.renewalMailEnabled,
     }),
     genres: normalizeGenres(body.genres ?? current.genres),
   };

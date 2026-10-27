@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { broadcastMessage, creatorNoticeMessage, creatorWelcomeMessage, displayFrom } from "./mail.ts";
+import { broadcastMessage, creatorNoticeMessage, creatorWelcomeMessage, displayFrom, renewalMessage } from "./mail.ts";
 
 test("welcome mail includes the dashboard link, username, password, and encouragement", () => {
   const message = creatorWelcomeMessage({
@@ -54,6 +54,21 @@ test("broadcast mail keeps the written copy and escapes html", () => {
   assert.doesNotMatch(message.html, /<script>/);
   assert.match(message.html, /https:\/\/cinemafeel\.dev\/feel-cinema-logo\.png/);
   assert.match(message.html, /alt="feel cinema"/);
+});
+
+test("renewal mail stays friendly and the offer names its deadline", () => {
+  const remind = renewalMessage({ kind: "d3", link: "https://cinemafeel.dev/renew" });
+  assert.equal(remind.subject, "3 хоногийн дараа багц чинь дуусна");
+  assert.match(remind.text, /Яарах зүйл байхгүй/);
+  assert.match(remind.text, /https:\/\/cinemafeel\.dev\/renew/);
+  assert.doesNotMatch(remind.text, /сунгаарай/);
+  const soon = renewalMessage({ kind: "d1", link: "https://cinemafeel.dev/renew" });
+  assert.equal(soon.subject, "Маргааш багц дуусах нь");
+  const offer = renewalMessage({ kind: "offer", link: "https://cinemafeel.dev/renew?code=RTEST", deadline: "10 сарын 28 10:00" });
+  assert.equal(offer.subject, "Чамд зориулж 20% үлдээсэн");
+  assert.match(offer.text, /20%/);
+  assert.match(offer.text, /10 сарын 28 10:00/);
+  assert.match(offer.html, /20%-тай эргэж ирье/);
 });
 
 test("display name replaces the mailbox label", () => {

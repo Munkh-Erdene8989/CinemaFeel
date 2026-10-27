@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
   if (!body.code?.trim()) return jsonError("Хөнгөлөлтийн код оруулна уу.");
   const settingsSnap = await adminDb().collection("settings").doc("app").get();
   const monthly = Number(settingsSnap.data()?.price || defaultSettings.price);
-  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly });
+  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly, uid: user.uid });
   if (!quote.ok) return jsonError(quote.error, quote.status);
   return NextResponse.json({
     code: quote.discountCode,

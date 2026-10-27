@@ -2669,6 +2669,8 @@ function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onS
   const [emailEnabled, setEmailEnabled] = useState(settings.emailEnabled);
   const [smsEnabled, setSmsEnabled] = useState(settings.smsEnabled);
   const [mailFromName, setMailFromName] = useState(settings.mailFromName);
+  const [renewalMailEnabled, setRenewalMailEnabled] = useState(settings.renewalMailEnabled);
+  const [renewalBusy, setRenewalBusy] = useState(false);
   const [channels, setChannels] = useState<{ resend: boolean; wesend: boolean; fromEmail: string } | null>(null);
   const [busy, setBusy] = useState(false);
   const [sendEmail, setSendEmail] = useState(true);
@@ -2684,6 +2686,7 @@ function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onS
     setEmailEnabled(settings.emailEnabled);
     setSmsEnabled(settings.smsEnabled);
     setMailFromName(settings.mailFromName);
+    setRenewalMailEnabled(settings.renewalMailEnabled);
   }, [settings]);
   useEffect(() => {
     adminFetch<{ channels: { resend: boolean; wesend: boolean; fromEmail: string } }>("/api/admin/marketing")
@@ -2695,7 +2698,7 @@ function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onS
     try {
       const saved = await adminFetch<{ settings: Settings }>("/api/admin/marketing", {
         method: "PUT",
-        body: JSON.stringify({ emailEnabled, smsEnabled, mailFromName }),
+        body: JSON.stringify({ emailEnabled, smsEnabled, mailFromName, renewalMailEnabled }),
       });
       onSaved(saved.settings);
       notify("Маркетингийн тохиргоо хадгалагдлаа.");
@@ -2703,6 +2706,24 @@ function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onS
       notify(cause instanceof Error ? cause.message : "Маркетингийн тохиргоо хадгалагдсангүй.");
     } finally {
       setBusy(false);
+    }
+  };
+  const toggleRenewal = async () => {
+    const next = !renewalMailEnabled;
+    setRenewalMailEnabled(next);
+    setRenewalBusy(true);
+    try {
+      const saved = await adminFetch<{ settings: Settings }>("/api/admin/marketing", {
+        method: "PUT",
+        body: JSON.stringify({ renewalMailEnabled: next }),
+      });
+      onSaved(saved.settings);
+      notify(next ? "Байнга мэйл аслаа." : "Байнга мэйл унтраалаа.");
+    } catch (cause) {
+      setRenewalMailEnabled(!next);
+      notify(cause instanceof Error ? cause.message : "Байнга мэйл хадгалагдсангүй.");
+    } finally {
+      setRenewalBusy(false);
     }
   };
   const previewSend = async () => {
@@ -2762,6 +2783,23 @@ function MarketingAdmin({ settings, onSaved, notify }: { settings: Settings; onS
       <p className="mt-1 text-sm text-zinc-600">Имэйл болон SMS илгээх сувгийг зөвхөн super admin удирдана. API түлхүүр серверийн орчинд хадгалагдана.</p>
       {!settings.notifications && <p className="mt-4 rounded-xl border border-amber-400/30 bg-amber-400/10 px-4 py-3 text-xs font-bold text-amber-200">Ерөнхий тохиргооны «Контентын мэдэгдэл» унтраалттай тул шинэ контент, шинэ бүтээгчийн мэдэгдэл явахгүй. Доорх шууд илгээлт энэ унтраалтаас хамаарахгүй.</p>}
       <div className="mt-7 space-y-5">
+        <section className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <h3 className="text-lg font-black">Байнга мэйл</h3>
+              <p className="mt-1 text-xs leading-5 text-zinc-600">Багц дуусахаас 3 хоног, 1 хоногийн өмнө сануулга явна. Сунгаагүй, тэр 3 хоногт үзээгүй бол зөвхөн тэр хүнд 20% хөнгөлөлт 24 цагаар явна. Өглөө 10:00 цагт шалгана.</p>
+            </div>
+            <button type="button" onClick={toggleRenewal} disabled={renewalBusy} aria-pressed={renewalMailEnabled} aria-label="Байнга мэйл" className={`relative mt-1 h-6 w-11 shrink-0 rounded-full transition disabled:opacity-60 ${renewalMailEnabled ? "bg-[#ff3d56]" : "bg-zinc-700"}`}>
+              <span className={`absolute top-1 h-4 w-4 rounded-full bg-white transition ${renewalMailEnabled ? "left-6" : "left-1"}`} />
+            </button>
+          </div>
+          <p className={`mt-4 text-xs font-bold ${renewalMailEnabled ? "text-emerald-400" : "text-zinc-500"}`}>{renewalMailEnabled ? "Асаалттай. Маргааш өглөөний шалгалтаас эхэлнэ." : "Унтраалттай. Мэйл явахгүй."}</p>
+          <ul className="mt-4 space-y-2 text-xs leading-5 text-zinc-500">
+            <li>3 хоног үлдсэн — 3 хоногийн дараа багц чинь дуусна</li>
+            <li>1 хоног үлдсэн — Маргааш багц дуусах нь</li>
+            <li>Дууссанаас 3 хоног, үзээгүй — Чамд зориулж 20% үлдээсэн</li>
+          </ul>
+        </section>
         <section className="rounded-2xl border border-white/[.07] bg-[#141419] p-6">
           <h3 className="text-lg font-black">Шууд илгээх</h3>
           <p className="mt-1 text-xs leading-5 text-zinc-600">Агуулгаа энд бичээд идэвхтэй хэрэглэгч рүү илгээнэ. Түр зогссон бүртгэл орохгүй.</p>

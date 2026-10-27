@@ -213,6 +213,7 @@ export type Settings = {
   emailEnabled: boolean;
   smsEnabled: boolean;
   mailFromName: string;
+  renewalMailEnabled: boolean;
   genres: string[];
 };
 
@@ -228,6 +229,7 @@ export const defaultSettings: Settings = {
   emailEnabled: true,
   smsEnabled: true,
   mailFromName: "CinemaFeel",
+  renewalMailEnabled: false,
   genres: defaultGenres,
 };
 

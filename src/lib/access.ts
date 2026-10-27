@@ -125,6 +125,9 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
     const discountRef = db.collection("discounts").doc(payment.discountCode);
     const discount = await discountRef.get();
     if (discount.exists) await discountRef.set({ usedCount: FieldValue.increment(1) }, { merge: true });
+    const offerRef = db.collection("renewalOffers").doc(payment.discountCode);
+    const offer = await offerRef.get();
+    if (offer.exists && !Number(offer.data()?.usedAt)) await offerRef.set({ usedAt: Date.now() }, { merge: true });
   }
   return { ok: true as const, already: false };
 }

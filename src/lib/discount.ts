@@ -1,5 +1,6 @@
 import { checkoutListAmount, viewerCheckoutMode } from "./entitlement";
 import { adminDb } from "./firebase-admin";
+import { asRenewalOffer, renewalOfferError } from "./renewal-mail";
 import type { CheckoutMode, Discount } from "./types";
 
 export function normalizeDiscountCode(value: string) {
@@ -42,7 +43,14 @@ type QuoteInput = {
   seriesId?: string | null;
   code?: string;
   monthlyPrice: number;
+  uid?: string;
 };
+
+async function loadRenewalOffer(code: string) {
+  const snap = await adminDb().collection("renewalOffers").doc(code).get();
+  if (!snap.exists) return null;
+  return asRenewalOffer(code, snap.data() as Record<string, unknown> | undefined);
+}
 
 export async function viewerCheckoutQuote(input: QuoteInput): Promise<
   | {
@@ -79,7 +87,21 @@ export async function viewerCheckoutQuote(input: QuoteInput): Promise<
 
   const discount = await loadDiscount(rawCode);
   if (!discount?.active || !validDiscountPercent(discount.percent)) {
-    return { ok: false, error: "Хөнгөлөлтийн код олдсонгүй эсвэл идэвхгүй байна.", status: 400 };
+    const offerCode = normalizeDiscountCode(rawCode);
+    const offer = offerCode ? await loadRenewalOffer(offerCode) : null;
+    if (!offer) return { ok: false, error: "Хөнгөлөлтийн код олдсонгүй эсвэл идэвхгүй байна.", status: 400 };
+    const reason = renewalOfferError(offer, { uid: input.uid ?? "", mode, now: Date.now() });
+    if (reason) return { ok: false, error: reason, status: 400 };
+    return {
+      ok: true,
+      mode,
+      amount: discountedAmount(originalAmount, offer.percent),
+      originalAmount,
+      product,
+      seriesId,
+      discountCode: offer.code,
+      discountPercent: offer.percent,
+    };
   }
 
   return {
