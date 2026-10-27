@@ -2,8 +2,10 @@ import { after, NextRequest, NextResponse } from "next/server";
 import { userCanWatch } from "@/lib/access";
 import { playbackDenial } from "@/lib/playback";
 import { mapSeries } from "@/lib/catalog";
-import { adminBucket, adminDb } from "@/lib/firebase-admin";
+import { adminDb, readableObjectUrl } from "@/lib/firebase-admin";
 import { jsonError, readUser } from "@/lib/http";
+import { muxConfigured, playbackToken, syncAsset } from "@/lib/mux";
+import { playbackProvider } from "@/lib/mux-source";
 import { subtitleUrl } from "@/lib/preview";
 import { recordPlaybackView } from "@/lib/views";
 
@@ -13,7 +15,7 @@ export async function POST(request: NextRequest) {
     const denial = playbackDenial(false, false)!;
     return NextResponse.json({ error: denial.error, code: denial.code }, { status: denial.status });
   }
-  const body = (await request.json().catch(() => ({}))) as { seriesId?: string; episodeId?: string };
+  const body = (await request.json().catch(() => ({}))) as { seriesId?: string; episodeId?: string; fallback?: boolean };
   if (!body.seriesId || !body.episodeId) return jsonError("Анги олдсонгүй.");
 
   const db = adminDb();
@@ -47,29 +49,52 @@ export async function POST(request: NextRequest) {
 
   if (youtubeId) {
     return finish(body.seriesId, user.uid, ownerId, {
+      provider: "youtube",
       youtubeId,
       startAt: Number(data.startAt ?? 0),
       subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
       subtitleUrl: subtitlePath ? subtitleUrl(body.seriesId, episodeSnap.id) : "",
       title: data.title || series.title,
-    });
+    }, true);
   }
 
   const storagePath = String(data.storagePath ?? "");
   if (!storagePath) return jsonError("Энэ ангийн видео оруулаагүй байна.", 404);
-  const [url] = await adminBucket().file(storagePath).getSignedUrl({
-    version: "v4",
-    action: "read",
-    expires: Date.now() + 2 * 60 * 60 * 1000,
-  });
-  return finish(body.seriesId, user.uid, ownerId, { url, title: episodeSnap.data()?.title || series.title });
+
+  const muxAssetId = String(data.muxAssetId ?? "");
+  let muxPlaybackId = String(data.muxPlaybackId ?? "");
+  let muxStatus = String(data.muxStatus ?? "");
+  if (!body.fallback && muxConfigured() && muxAssetId && muxStatus !== "ready" && muxStatus !== "errored") {
+    try {
+      const fresh = await syncAsset(muxAssetId);
+      muxPlaybackId = fresh.muxPlaybackId;
+      muxStatus = fresh.muxStatus;
+      await episodeSnap.ref.set({ muxAssetId: fresh.muxAssetId, muxPlaybackId, muxStatus }, { merge: true });
+    } catch (error) {
+      console.warn("Mux төлөв уншигдсангүй.", error);
+    }
+  }
+
+  if (playbackProvider({ fallback: body.fallback, muxPlaybackId, muxStatus }) === "mux") {
+    try {
+      const token = await playbackToken(muxPlaybackId);
+      return finish(body.seriesId, user.uid, ownerId, { provider: "mux", playbackId: muxPlaybackId, token, title: data.title || series.title }, true);
+    } catch (error) {
+      console.warn("Mux токен үүссэнгүй.", error);
+    }
+  }
+
+  const url = await readableObjectUrl(storagePath);
+  return finish(body.seriesId, user.uid, ownerId, { provider: "firebase", url, title: data.title || series.title }, !body.fallback);
 }
 
-function finish(seriesId: string, uid: string, ownerId: string, body: Record<string, unknown>) {
-  after(() =>
-    recordPlaybackView(seriesId, uid, ownerId).catch((error) => {
-      console.warn("Үзэлт бүртгэж чадсангүй.", error);
-    }),
-  );
+function finish(seriesId: string, uid: string, ownerId: string, body: Record<string, unknown>, recordView: boolean) {
+  if (recordView) {
+    after(() =>
+      recordPlaybackView(seriesId, uid, ownerId).catch((error) => {
+        console.warn("Үзэлт бүртгэж чадсангүй.", error);
+      }),
+    );
+  }
   return NextResponse.json(body);
 }

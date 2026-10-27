@@ -9,6 +9,9 @@
   },
   "dependencies": {
     "@gsap/react": "^2.1.2",
+    "@mux/mux-node": "^15.5.0",
+    "@mux/mux-player-react": "^3.14.1",
+    "@mux/mux-video-react": "^0.31.6",
     "@vercel/analytics": "^2.0.1",
     "@vercel/speed-insights": "^2.0.0",
     "animejs": "^4.5.0",

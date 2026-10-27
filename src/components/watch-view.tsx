@@ -1,5 +1,6 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { collection, doc, getDocs, setDoc } from "firebase/firestore";
@@ -20,6 +21,8 @@ import { MatureGate, useMatureConsent } from "./mature-gate";
 import { usePulse } from "./motion";
 import { useSite } from "./site-provider";
 
+const MuxPlayer = dynamic(() => import("@mux/mux-player-react"), { ssr: false });
+
 function phoneOnlyAccount(email?: string | null, phone?: string | null) {
   return !String(email || "").includes("@") && Boolean(String(phone || "").trim());
 }
@@ -34,6 +37,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   const [episodes, setEpisodes] = useState<Episode[]>([]);
   const [episodesReady, setEpisodesReady] = useState(false);
   const [url, setUrl] = useState("");
+  const [mux, setMux] = useState<{ playbackId: string; token: string } | null>(null);
   const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleUrl: string; subtitleOffsetMs: number } | null>(null);
   const [error, setError] = useState("");
   const [needsAuth, setNeedsAuth] = useState(false);
@@ -42,6 +46,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   const [askEmail, setAskEmail] = useState(true);
   const [playbackKey, setPlaybackKey] = useState(0);
   const loadedFor = useRef("");
+  const fallbackUsed = useRef(false);
   const loadingRef = useRef<HTMLParagraphElement>(null);
   const paywallRetry = useRef(false);
   const needsEmail = Boolean(user && profile && phoneOnlyAccount(profile.email || user.email, profile.phone || user.phoneNumber));
@@ -119,16 +124,27 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
       setLoading(true);
       setError("");
       setUrl("");
+      setMux(null);
       setYoutube(null);
       setNeedsAuth(false);
       setNeedsPay(false);
-      const token = await clientAuth().currentUser?.getIdToken();
-      const response = await fetch("/api/media/play", {
-        method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
-        body: JSON.stringify({ seriesId, episodeId: current.id }),
-      });
-      const data = (await response.json()) as { error?: string; url?: string; code?: string; youtubeId?: string; startAt?: number; subtitleUrl?: string; subtitleOffsetMs?: number };
+      let response: Response;
+      let data: { error?: string; url?: string; provider?: string; playbackId?: string; token?: string; code?: string; youtubeId?: string; startAt?: number; subtitleUrl?: string; subtitleOffsetMs?: number };
+      try {
+        const token = await clientAuth().currentUser?.getIdToken();
+        response = await fetch("/api/media/play", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+          body: JSON.stringify({ seriesId, episodeId: current.id }),
+        });
+        data = (await response.json().catch(() => ({}))) as typeof data;
+      } catch {
+        if (!ignore) {
+          setLoading(false);
+          setError("Видео нээж чадсангүй.");
+        }
+        return;
+      }
       if (ignore) return;
       setLoading(false);
       if (data.code === "auth") {
@@ -151,6 +167,12 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
         return;
       }
       loadedFor.current = requestKey;
+      if (data.provider === "mux" && data.playbackId && data.token) {
+        setMux({ playbackId: data.playbackId, token: data.token });
+        setUrl("");
+        setYoutube(null);
+        return;
+      }
       if (data.youtubeId) {
         setYoutube({
           videoId: data.youtubeId,
@@ -177,7 +199,28 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
 
   useEffect(() => {
     paywallRetry.current = false;
+    fallbackUsed.current = false;
   }, [seriesId, episodeNumber, user?.uid]);
+
+  const useStoredFile = async () => {
+    if (fallbackUsed.current || !current?.id || !user?.uid) return;
+    fallbackUsed.current = true;
+    const token = await clientAuth().currentUser?.getIdToken();
+    const response = await fetch("/api/media/play", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ seriesId, episodeId: current.id, fallback: true }),
+    });
+    const data = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+    setMux(null);
+    if (data.url) {
+      setUrl(data.url);
+      setError("");
+      return;
+    }
+    setUrl("");
+    setError(data.error || "Видео нээгдсэнгүй. Файл тоглуулахад бэлэн биш байна.");
+  };
 
   const saveProgress = (seconds: number) => {
     if (!user || !current) return;
@@ -190,20 +233,19 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
 
   useEffect(() => {
     const stage = stageRef.current;
-    const video = stage?.querySelector("video");
-    if (!stage || !video) return;
+    if (!stage || (!url && !mux)) return;
     const retarget = () => {
       const current = document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
-      if (current !== video) return;
+      if (!current || current === stage || !stage.contains(current)) return;
       document.exitFullscreen()
         .then(() => stage.requestFullscreen())
         .catch(() => undefined);
     };
     document.addEventListener("fullscreenchange", retarget);
     return () => document.removeEventListener("fullscreenchange", retarget);
-  }, [url]);
+  }, [url, mux]);
 
-  usePulse(loading && !url && !youtube, loadingRef);
+  usePulse(loading && !url && !mux && !youtube, loadingRef);
 
   const leave = () => {
     const finish = () => {
@@ -280,7 +322,27 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
             />
           ) : (
           <div ref={stageRef} className="relative aspect-[9/16] bg-zinc-900">
-            {url ? (
+            {mux ? (
+              <MuxPlayer
+                key={current?.id}
+                playbackId={mux.playbackId}
+                tokens={{ playback: mux.token }}
+                maxResolution="1080p"
+                streamType="on-demand"
+                autoPlay
+                accentColor="#ff3d56"
+                poster={film.image || ""}
+                className="h-full w-full"
+                style={{ height: "100%", width: "100%", "--media-object-fit": "contain" }}
+                onTimeUpdate={(event) => {
+                  const seconds = Math.floor((event.currentTarget as { currentTime?: number }).currentTime ?? 0);
+                  if (seconds > 0 && seconds % 5 === 0) saveProgress(seconds);
+                }}
+                onError={() => {
+                  void useStoredFile();
+                }}
+              />
+            ) : url ? (
               <video
                 key={current?.id}
                 src={url}
@@ -322,7 +384,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 </div>
               </div>
             )}
-            {url && watermark ? (
+            {(url || mux) && watermark ? (
               <div className="pointer-events-none absolute inset-0 z-10 grid place-items-center select-none" aria-hidden="true">
                 <p className="absolute left-1/2 top-[65%] max-w-[78%] -translate-x-1/2 -translate-y-1/2 whitespace-pre-line text-center text-[13px] font-bold leading-snug tracking-wide text-white/10 [text-shadow:0_1px_8px_rgba(0,0,0,0.55)]">{watermark}</p>
               </div>

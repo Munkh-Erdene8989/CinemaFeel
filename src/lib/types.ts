@@ -83,6 +83,9 @@ export type Episode = {
   subtitleOffsetMs?: number;
   youtubeId?: string;
   subtitlePath?: string;
+  muxAssetId?: string;
+  muxPlaybackId?: string;
+  muxStatus?: string;
 };
 
 export type Lesson = {

@@ -1,5 +1,6 @@
 import { FieldValue } from "firebase-admin/firestore";
 import { NextRequest, NextResponse } from "next/server";
+import { createAssetFromStorage, deleteAsset, muxConfigured } from "@/lib/mux";
 import { publishNotice } from "@/lib/publish-notice";
 import { seriesStatus } from "@/lib/series-doc";
 import { deleteEpisodeMedia, deleteShareCode, posterUrl, readManageableSeries, seriesPayload, uniqueShareCode, writeShareCode } from "@/lib/catalog";
@@ -25,14 +26,35 @@ export async function PATCH(request: NextRequest, context: Context) {
     const nextPath = body.reelPreviewPath.trim();
     if (!nextPath) {
       if (previous) await adminBucket().file(previous).delete({ ignoreNotFound: true });
-      await ref.set({ reelPreview: FieldValue.delete(), reelPreviewPath: FieldValue.delete() }, { merge: true });
+      await deleteAsset(String(current.data()?.reelMuxAssetId ?? ""));
+      await ref.set({
+        reelPreview: FieldValue.delete(),
+        reelPreviewPath: FieldValue.delete(),
+        reelMuxAssetId: FieldValue.delete(),
+        reelMuxPlaybackId: FieldValue.delete(),
+        reelMuxStatus: FieldValue.delete(),
+      }, { merge: true });
       return NextResponse.json({ ok: true, reelPreview: "" });
     }
     if (!nextPath.startsWith(`reels/${id}/`)) return jsonError("Reel файл буруу байна.");
     try {
       const reelPreview = await posterUrl(nextPath);
       if (previous && previous !== nextPath) await adminBucket().file(previous).delete({ ignoreNotFound: true });
-      await ref.set({ reelPreview, reelPreviewPath: nextPath }, { merge: true });
+      const previousAsset = String(current.data()?.reelMuxAssetId ?? "");
+      const mux = muxConfigured()
+        ? await createAssetFromStorage({ storagePath: nextPath, passthrough: `reel:${id}` }).catch((error) => {
+            console.warn("Reel Mux хуулбар үүссэнгүй.", error);
+            return null;
+          })
+        : null;
+      await ref.set({
+        reelPreview,
+        reelPreviewPath: nextPath,
+        ...(mux
+          ? { reelMuxAssetId: mux.muxAssetId, reelMuxPlaybackId: mux.muxPlaybackId, reelMuxStatus: mux.muxStatus }
+          : { reelMuxAssetId: FieldValue.delete(), reelMuxPlaybackId: FieldValue.delete(), reelMuxStatus: FieldValue.delete() }),
+      }, { merge: true });
+      if (previousAsset && previousAsset !== mux?.muxAssetId) await deleteAsset(previousAsset);
       return NextResponse.json({ ok: true, reelPreview });
     } catch (error) {
       const message = error instanceof Error ? error.message : "Storage холбогдсонгүй.";

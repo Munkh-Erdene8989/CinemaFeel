@@ -1,10 +1,13 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import { useEffect, useRef, useState } from "react";
 import { REEL_YOUTUBE_SECONDS, reelSpan, type ReelClip } from "@/lib/reels";
 import { MediaImage } from "./media-image";
 import { Icon } from "./icons";
 import { prefersReducedMotion } from "./motion";
+
+const MuxVideo = dynamic(() => import("@mux/mux-video-react"), { ssr: false });
 
 type ReelPayload = { seconds?: number; clips?: ReelClip[] };
 
@@ -170,6 +173,8 @@ export function ReelView() {
             {index === active && clip.source === "file" ? (
               <ReelFilePlayer
                 url={clip.url}
+                muxPlaybackId={clip.muxPlaybackId}
+                muxToken={clip.muxToken}
                 seconds={clip.seconds || REEL_YOUTUBE_SECONDS}
                 muted={muted}
                 paused={paused}
@@ -433,6 +438,8 @@ function ReelPlayer({
 
 function ReelFilePlayer({
   url,
+  muxPlaybackId,
+  muxToken,
   seconds,
   muted,
   paused,
@@ -443,6 +450,8 @@ function ReelFilePlayer({
   onEnded,
 }: {
   url: string;
+  muxPlaybackId?: string;
+  muxToken?: string;
   seconds: number;
   muted: boolean;
   paused: boolean;
@@ -453,6 +462,8 @@ function ReelFilePlayer({
   onEnded: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement>(null);
+  const [muxFailed, setMuxFailed] = useState(false);
+  const useMux = Boolean(muxPlaybackId && muxToken && !muxFailed);
   const endedRef = useRef(false);
   const repeatRef = useRef(repeat);
   const pausedRef = useRef(paused);
@@ -501,7 +512,7 @@ function ReelFilePlayer({
     return () => {
       cancelled = true;
     };
-  }, [muted, paused, url]);
+  }, [muted, paused, url, useMux]);
 
   const finish = (video: HTMLVideoElement, limit: number) => {
     if (endedRef.current) return;
@@ -518,6 +529,42 @@ function ReelFilePlayer({
 
   return (
     <div className="absolute inset-0 overflow-hidden bg-black">
+      {useMux ? (
+        <MuxVideo
+          ref={videoRef}
+          playbackId={muxPlaybackId}
+          tokens={{ playback: muxToken }}
+          maxResolution="1080p"
+          autoPlay
+          muted={silent}
+          playsInline
+          className="h-full w-full object-cover"
+          onPlay={() => onPlayingRef.current(true)}
+          onPause={(event) => {
+            if (pausedRef.current || endedRef.current) {
+              onPlayingRef.current(false);
+              return;
+            }
+            if (mutedRef.current || silent) return;
+            setSilent(true);
+            onSoundBlockedRef.current();
+            void event.currentTarget.play().catch(() => undefined);
+          }}
+          onLoadedMetadata={() => {
+            endedRef.current = false;
+            onProgressRef.current(0);
+          }}
+          onTimeUpdate={(event) => {
+            const video = event.currentTarget;
+            const limit = Math.min(seconds, video.duration || seconds);
+            const ratio = limit > 0 ? video.currentTime / limit : 0;
+            onProgressRef.current(Math.min(1, Math.max(0, ratio)));
+            if (video.currentTime >= limit - 0.25) finish(video, limit);
+          }}
+          onEnded={(event) => finish(event.currentTarget, seconds)}
+          onError={() => setMuxFailed(true)}
+        />
+      ) : (
       <video
         ref={videoRef}
         src={url}
@@ -549,6 +596,7 @@ function ReelFilePlayer({
         }}
         onEnded={(event) => finish(event.currentTarget, seconds)}
       />
+      )}
     </div>
   );
 }

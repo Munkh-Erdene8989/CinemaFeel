@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { deleteEpisodeMedia, readManageableSeries, rebuildSeriesPreview } from "@/lib/catalog";
+import { deleteAsset } from "@/lib/mux";
 import { assertAdmin, jsonError } from "@/lib/http";
 
 export async function DELETE(request: NextRequest, context: { params: Promise<{ id: string; episodeId: string }> }) {
@@ -11,6 +12,7 @@ export async function DELETE(request: NextRequest, context: { params: Promise<{ 
   const ref = loaded.ref.collection("episodes").doc(episodeId);
   const snap = await ref.get();
   if (!snap.exists) return jsonError("Анги олдсонгүй.", 404);
+  await deleteAsset(String(snap.data()?.muxAssetId ?? ""));
   await deleteEpisodeMedia(loaded.ref, episodeId, snap.data() ?? {});
   await ref.delete();
   if (String(loaded.snap.data()?.preview?.episodeId ?? "") === episodeId) await rebuildSeriesPreview(loaded.ref);

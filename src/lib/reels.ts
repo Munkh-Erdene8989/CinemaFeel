@@ -15,6 +15,8 @@ export type ReelClip = {
   startAt: number;
   seconds: number;
   episodeLabel: string;
+  muxPlaybackId?: string;
+  muxToken?: string;
 };
 
 export function shuffle<T>(items: T[], random: () => number = Math.random) {

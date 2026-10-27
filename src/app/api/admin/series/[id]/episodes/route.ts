@@ -3,6 +3,7 @@ import { listEpisodes, newId, readManageableSeries } from "@/lib/catalog";
 import { announceNewEpisode } from "@/lib/episode-announce";
 import { adminBucket } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, siteOrigin } from "@/lib/http";
+import { createAssetFromStorage, muxConfigured } from "@/lib/mux";
 import { shouldReplacePreview } from "@/lib/preview";
 import { parseYouTubeUrl } from "@/lib/youtube";
 
@@ -64,6 +65,9 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     youtubeId?: string;
     subtitlePath?: string;
     telegramAnnounce: "pending";
+    muxAssetId?: string;
+    muxPlaybackId?: string;
+    muxStatus?: string;
   } = {
     number: Number(body.number ?? 1),
     title: String(body.title || `${body.number}-р анги`),
@@ -93,6 +97,18 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
       episode.subtitlePath = subtitlePath;
     }
     await series.collection("playback").doc(episodeId).set(playback);
+  }
+
+  if (storagePath && !youtubeId && muxConfigured()) {
+    try {
+      Object.assign(episode, await createAssetFromStorage({
+        storagePath,
+        subtitlePath: episode.subtitlePath,
+        passthrough: `episode:${id}:${episodeId}`,
+      }));
+    } catch (error) {
+      console.warn("Mux хуулбар үүссэнгүй.", error);
+    }
   }
 
   await series.collection("episodes").doc(episodeId).set(episode);
