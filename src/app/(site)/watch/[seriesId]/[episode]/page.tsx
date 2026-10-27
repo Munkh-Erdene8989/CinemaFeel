@@ -8,11 +8,17 @@ export const preferredRegion = "icn1";
 
 type Props = { params: Promise<{ seriesId: string; episode: string }> };
 
+const unavailable: Metadata = {
+  title: "Кино олдсонгүй",
+  description: "Энэ кино одоо байхгүй.",
+  robots: { index: false, follow: false },
+};
+
 export async function generateMetadata({ params }: Props): Promise<Metadata> {
   const { seriesId } = await params;
   const series = await readSeries(seriesId);
-  if (!series) return { title: "CinemaFeel" };
-  if (isMature(series)) return { title: "CinemaFeel", description: "Насанд хүрэгчдэд зориулсан контент." };
+  if (!series || series.status !== "Нийтлэгдсэн") return unavailable;
+  if (isMature(series)) return { title: "CinemaFeel", description: "Насанд хүрэгчдэд зориулсан контент.", robots: { index: false, follow: false } };
   const title = series.title || "CinemaFeel";
   const description = series.description || "";
   const image = series.cover || series.image || "";
