@@ -25,7 +25,7 @@ export function formatDate(value: number | string) {
 }
 
 export function formatViews(views: number) {
-  if (views >= 1000) return `${Math.round(views / 1000)}K`;
+  if (views >= 1000) return `${(Math.round(views / 100) / 10).toFixed(1)}K`;
   return String(views);
 }
 

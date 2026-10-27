@@ -32,7 +32,7 @@ function series(partial: Pick<Series, "id" | "ownerId" | "uniqueViews">): Series
   };
 }
 
-function payment(partial: Pick<Payment, "id" | "amount" | "createdAt">): Payment {
+function payment(partial: Pick<Payment, "id" | "amount" | "createdAt"> & Partial<Pick<Payment, "mode">>): Payment {
   return {
     uid: "u",
     email: "",
@@ -120,4 +120,38 @@ test("a paid mark changes status without changing the cycle amount", () => {
   assert.equal(creator?.lines[1]?.total, 1600);
   assert.equal(creator?.lines[1]?.status, "Олгосон");
   assert.equal(creator?.bankAccount, "5123456789");
+});
+
+test("subscription share uses viewers inside that half and that month, not lifetime views", () => {
+  const cycles = recentSalaryCycles(at(2026, 10, 20), 2);
+  const creators = buildSalaryCreators(
+    cycles,
+    [
+      series({ id: "ada-film", ownerId: "ada", uniqueViews: 1 }),
+      series({ id: "bob-film", ownerId: "bob", uniqueViews: 99 }),
+    ],
+    [
+      payment({ id: "early-sub", amount: 2000, createdAt: at(2026, 10, 3, 12), mode: "subscription" }),
+      payment({ id: "late-sub", amount: 10000, createdAt: at(2026, 10, 18, 12), mode: "subscription" }),
+    ],
+    [
+      { id: "ada", name: "Ада", username: "ada" },
+      { id: "bob", name: "Боб", username: "bob" },
+    ],
+    [],
+    [
+      { seriesId: "bob-film", uid: "bob-viewer", createdAt: at(2026, 10, 2, 9) },
+      { seriesId: "ada-film", uid: "ada-viewer", createdAt: at(2026, 10, 18, 9) },
+      { seriesId: "ada-film", uid: "ada-viewer", createdAt: at(2026, 10, 19, 9) },
+      { seriesId: "bob-film", uid: "old-viewer", createdAt: at(2026, 9, 20, 9) },
+    ],
+  );
+  const ada = creators.find((item) => item.adminId === "ada");
+  const bob = creators.find((item) => item.adminId === "bob");
+  assert.equal(ada?.lines[0]?.id, "2026-10-b");
+  assert.equal(ada?.lines[0]?.subscriptionShare, 5000);
+  assert.equal(bob?.lines[0]?.subscriptionShare, 0);
+  assert.equal(bob?.lines[1]?.id, "2026-10-a");
+  assert.equal(bob?.lines[1]?.subscriptionShare, 1000);
+  assert.equal(ada?.lines[1]?.subscriptionShare, 0);
 });

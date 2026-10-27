@@ -1,6 +1,7 @@
 import { randomInt } from "crypto";
 import { FieldValue } from "firebase-admin/firestore";
 import { adminDb } from "./firebase-admin";
+import { periodView, viewDayKey, type PeriodView } from "./period-views";
 import { SUPER_ADMIN_ID } from "./types";
 
 /** Spread play bursts across this many documents. One document sustains about one write per second. */
@@ -78,20 +79,38 @@ async function incrementShard(seriesId: string, counts: { views: number; uniqueV
 
 export async function recordPlaybackView(seriesId: string, uid: string, ownerId: string) {
   const db = adminDb();
+  const now = Date.now();
   const viewRef = db.collection("views").doc(`${seriesId}_${uid}`);
+  const dayRef = db.collection("viewDays").doc(`${seriesId}_${uid}_${viewDayKey(now)}`);
   let unique = false;
   try {
     await viewRef.create({
       seriesId,
       uid,
       ownerId: ownerId || SUPER_ADMIN_ID,
-      createdAt: Date.now(),
+      createdAt: now,
     });
     unique = true;
   } catch (error) {
     if (!isAlreadyExists(error)) throw error;
   }
+  try {
+    await dayRef.create({ seriesId, uid, day: viewDayKey(now), createdAt: now });
+  } catch (error) {
+    if (!isAlreadyExists(error)) throw error;
+  }
   await incrementShard(seriesId, { views: 1, uniqueViews: unique ? 1 : 0 });
+}
+
+export async function loadPeriodViews(since: number): Promise<PeriodView[]> {
+  const [first, days] = await Promise.all([
+    adminDb().collection("views").where("createdAt", ">=", since).select("seriesId", "uid", "createdAt").get(),
+    adminDb().collection("viewDays").where("createdAt", ">=", since).select("seriesId", "uid", "createdAt").get(),
+  ]);
+  return [...first.docs, ...days.docs].flatMap((item) => {
+    const view = periodView(item.data());
+    return view ? [view] : [];
+  });
 }
 
 export async function rollupSeriesViews(seriesId: string) {

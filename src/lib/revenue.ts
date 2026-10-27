@@ -1,4 +1,5 @@
 import { isSubscriptionCheckout } from "./entitlement";
+import { seriesInPeriod, type PeriodView } from "./period-views";
 import { SUPER_ADMIN_ID, type AdminRevenue, type Payment, type ReferralEarning, type RevenueReport, type RevenueRow, type Series } from "./types";
 
 export const revenueWindows = [15, 30, 90] as const;
@@ -157,20 +158,22 @@ export function revenueParties(staff: RevenueParty[]) {
   return { names, invitedBy };
 }
 
-export function revenueForWindow(series: Series[], payments: Payment[], staff: RevenueParty[], since: number) {
+export function revenueForWindow(series: Series[], payments: Payment[], staff: RevenueParty[], since: number, views?: PeriodView[]) {
   const { names, invitedBy } = revenueParties(staff);
+  const films = views ? seriesInPeriod(series, views, since, Number.POSITIVE_INFINITY) : series;
   return buildRevenue(
-    series,
+    films,
     payments.filter((payment) => payment.createdAt >= since),
     names,
     invitedBy,
   );
 }
 
-export function revenueBetween(series: Series[], payments: Payment[], staff: RevenueParty[], start: number, end: number) {
+export function revenueBetween(series: Series[], payments: Payment[], staff: RevenueParty[], start: number, end: number, views?: PeriodView[]) {
   const { names, invitedBy } = revenueParties(staff);
+  const films = views ? seriesInPeriod(series, views, start, end) : series;
   return buildRevenue(
-    series,
+    films,
     payments.filter((payment) => payment.createdAt >= start && payment.createdAt < end),
     names,
     invitedBy,

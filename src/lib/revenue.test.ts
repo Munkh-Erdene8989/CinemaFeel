@@ -90,3 +90,24 @@ test("a creator report keeps that creator's rows and hides the platform totals",
   assert.equal(scoped.admins.length, 1);
   assert.equal(scopedRevenue(report, { role: "super", adminId: "super", name: "Super admin" }), report);
 });
+
+test("a revenue window counts a viewer once and ignores lifetime views outside it", () => {
+  const films = [
+    series({ id: "new", ownerId: "ada", uniqueViews: 1 }),
+    series({ id: "old", ownerId: "bob", uniqueViews: 99 }),
+  ];
+  const report = revenueForWindow(
+    films,
+    [payment({ id: "sub", mode: "subscription", amount: 10000, status: "Амжилттай", createdAt: 100 })],
+    [{ id: "ada", name: "Ada" }, { id: "bob", name: "Bob" }],
+    50,
+    [
+      { seriesId: "new", uid: "u", createdAt: 80 },
+      { seriesId: "new", uid: "u", createdAt: 90 },
+      { seriesId: "old", uid: "v", createdAt: 10 },
+    ],
+  );
+  assert.equal(report.admins.find((item) => item.adminId === "ada")?.uniqueViews, 1);
+  assert.equal(report.admins.find((item) => item.adminId === "ada")?.subscriptionShare, 5000);
+  assert.equal(report.admins.find((item) => item.adminId === "bob")?.subscriptionShare, 0);
+});

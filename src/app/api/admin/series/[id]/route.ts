@@ -105,11 +105,16 @@ export async function DELETE(request: NextRequest, context: Context) {
     shards.docs.forEach((item) => shardBatch.delete(item.ref));
     await shardBatch.commit();
   }
-  const views = await adminDb().collection("views").where("seriesId", "==", id).get();
-  for (let index = 0; index < views.docs.length; index += 400) {
-    const batch = adminDb().batch();
-    views.docs.slice(index, index + 400).forEach((item) => batch.delete(item.ref));
-    await batch.commit();
+  const [views, viewDays] = await Promise.all([
+    adminDb().collection("views").where("seriesId", "==", id).get(),
+    adminDb().collection("viewDays").where("seriesId", "==", id).get(),
+  ]);
+  for (const snap of [views, viewDays]) {
+    for (let index = 0; index < snap.docs.length; index += 400) {
+      const batch = adminDb().batch();
+      snap.docs.slice(index, index + 400).forEach((item) => batch.delete(item.ref));
+      await batch.commit();
+    }
   }
   await deleteShareCode(shareCode);
   await ref.delete();

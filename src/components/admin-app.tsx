@@ -10,7 +10,7 @@ import { CORNER_NAME_LIMIT, creatorCornerTitle } from "@/lib/creator-site";
 import { isMature } from "@/lib/mature";
 import { playableMp4 } from "@/lib/mp4-faststart";
 import { bandWeight, type ActivityReport, type ActivityViewer, type ActivityWindowDays } from "@/lib/activity";
-import { revenueForWindow, revenueWindow, revenueWindows, type RevenueWindow } from "@/lib/revenue";
+import { revenueWindows, type RevenueWindow } from "@/lib/revenue";
 import type { SalaryLine, SalaryReport } from "@/lib/salary";
 import { CreatorGuide, creatorGuideSteps } from "./creator-guide";
 import { CreatorTermsModal } from "./creator-terms-modal";
@@ -254,6 +254,8 @@ export function AdminApp() {
   const [payments, setPayments] = useState<Payment[]>([]);
   const [settings, setSettings] = useState<Settings>(defaultSettings);
   const [creatorRevenue, setCreatorRevenue] = useState<RevenueReport | null>(null);
+  const [ownerRevenue, setOwnerRevenue] = useState<RevenueReport | null>(null);
+  const [ownerRevenueReady, setOwnerRevenueReady] = useState(false);
   const [revenueDays, setRevenueDays] = useState<RevenueWindow>(30);
   const [staff, setStaff] = useState<StaffAdmin[]>([]);
   const [lessons, setLessons] = useState<Lesson[]>([]);
@@ -349,12 +351,7 @@ export function AdminApp() {
     }
   };
 
-  const superRevenue = useMemo(() => {
-    if (session?.role !== "super") return null;
-    const { since } = revenueWindow(revenueDays);
-    return revenueForWindow(content, payments, staff, since);
-  }, [session?.role, staff, content, payments, revenueDays]);
-  const revenue = session?.role === "super" ? superRevenue : creatorRevenue;
+  const revenue = session?.role === "super" ? ownerRevenue : creatorRevenue;
 
   const acceptTerms = async () => {
     setTermsBusy(true);
@@ -481,6 +478,27 @@ export function AdminApp() {
   }, [ready, section, session?.role, activity, activityReady]);
 
   useEffect(() => {
+    if (!ready || session?.role !== "super") return;
+    if (section !== "Орлого" && section !== "Контент бүтээгчид") return;
+    let ignore = false;
+    setOwnerRevenueReady(false);
+    adminFetch<RevenueReport>(`/api/admin/revenue?days=${revenueDays}`)
+      .then((data) => {
+        if (ignore) return;
+        setOwnerRevenue(data);
+        setOwnerRevenueReady(true);
+      })
+      .catch((error: Error) => {
+        if (ignore) return;
+        setOwnerRevenueReady(true);
+        notify(error.message || "Орлогыг ачаалж чадсангүй.");
+      });
+    return () => {
+      ignore = true;
+    };
+  }, [ready, section, session?.role, revenueDays]);
+
+  useEffect(() => {
     if (!ready || section !== "Цалин") return;
     let ignore = false;
     adminFetch<SalaryReport>("/api/admin/salary")
@@ -577,7 +595,8 @@ export function AdminApp() {
           }} notify={notify} />}
           {section === "Мэдлэг" && lessonsReady && <KnowledgeAdmin lessons={lessons} manage={superAdmin} reload={refreshLessons} notify={notify} />}
           {section === "Мэдлэг" && !lessonsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
-          {section === "Орлого" && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
+          {section === "Орлого" && superAdmin && !ownerRevenueReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
+          {section === "Орлого" && (!superAdmin || ownerRevenueReady) && <RevenueAdmin revenue={revenue} showOwners={superAdmin} days={revenueDays} onDays={selectRevenueDays} />}
           {section === "Зардал" && superAdmin && <ExpensesAdmin notify={notify} />}
           {section === "Цалин" && salaryReady && salary && <SalaryAdmin report={salary} manage={superAdmin} notify={notify} onUpdated={(adminId, cycleId, paid, paidAt) => {
             setSalary((current) => current && ({
@@ -1226,7 +1245,7 @@ function AdminHome({ content, mine, days, inviteCode, username, cornerName, corn
   return (
     <>
       <h2 className="text-2xl font-black">Миний тойм</h2>
-      <p className="mt-1 text-sm text-zinc-600">Сүүлийн {days} хоногийн орлого. Шууд борлуулалтын 80% танд, 20% платформд. Сарын эрхийн 50%-ийг нийт үзэлтээр хуваана. {content.length} контент.</p>
+      <p className="mt-1 text-sm text-zinc-600">Сүүлийн {days} хоногийн орлого. Шууд борлуулалтын 80% танд, 20% платформд. Сарын эрхийн 50%-ийг тухайн хугацааны давтагдаагүй үзэлтээр хуваана. {content.length} контент.</p>
       {inviteCode && (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/[.07] bg-[#141419] px-5 py-4">
           <div>
@@ -2983,7 +3002,7 @@ function SalaryAdmin({ report, manage, notify, onUpdated }: { report: SalaryRepo
               <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
                 <p className="text-xs font-bold text-zinc-500">Сарын эрхийн хувь</p>
                 <p className="mt-3 text-2xl font-black">{formatMoney(current.subscriptionShare)}</p>
-                <p className="mt-2 text-xs text-zinc-600">үзэлтийн хувиар</p>
+                <p className="mt-2 text-xs text-zinc-600">тухайн 15 хоногийн үзэлтээр</p>
               </div>
               <div className="rounded-2xl border border-white/[.07] bg-[#141419] p-5">
                 <p className="text-xs font-bold text-zinc-500">Урилга</p>
@@ -3091,7 +3110,7 @@ function RevenueAdmin({ revenue, showOwners, days, onDays }: { revenue: RevenueR
         <div>
           <h2 className="text-2xl font-black">Орлого</h2>
           <p className="mt-1 max-w-3xl text-sm text-zinc-600">
-            Сүүлийн {days} хоногийн төлбөр. Шууд борлуулалтын 80% бүтээгчид. Сарын эрхийн 50%-ийг нийт давтагдаагүй үзэлтээр хуваана. Урилга нь шууд борлуулалтын 10%.
+            Сүүлийн {days} хоногийн төлбөр. Шууд борлуулалтын 80% бүтээгчид. Сарын эрхийн 50%-ийг тухайн хугацааны давтагдаагүй үзэлтээр хуваана. Урилга нь шууд борлуулалтын 10%.
           </p>
         </div>
         <div className="flex gap-2">

@@ -1,3 +1,4 @@
+import type { PeriodView } from "./period-views";
 import { revenueBetween, type RevenueParty } from "./revenue";
 import type { Payment, Series } from "./types";
 
@@ -177,12 +178,13 @@ export function buildSalaryCreators(
   payments: Payment[],
   staff: SalaryStaff[],
   payouts: SalaryPayout[],
+  views: PeriodView[] = [],
 ): SalaryCreator[] {
   const paid = new Map(payouts.map((item) => [`${item.adminId}_${item.cycleId}`, item]));
   const byCycle = cycles.map((cycle, index) => ({
     cycle,
     current: index === 0,
-    report: revenueBetween(series, payments, staff, cycle.start, cycle.end),
+    report: revenueBetween(series, payments, staff, cycle.start, cycle.end, views),
   }));
   return staff
     .map((admin) => ({

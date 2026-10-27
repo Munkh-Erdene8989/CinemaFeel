@@ -6,6 +6,7 @@ import { paymentsWithoutQr } from "@/lib/payment-query";
 import { revenueForWindow, revenueWindow, scopedRevenue } from "@/lib/revenue";
 import { mapStaff } from "@/lib/staff";
 import { mergeSettings, type AppUser, type Payment, type Settings } from "@/lib/types";
+import { loadPeriodViews } from "@/lib/views";
 
 function mapPayment(id: string, data: Omit<Payment, "id">): Payment {
   return { id, ...data, qrImage: "", qrText: "", urls: [] };
@@ -16,13 +17,14 @@ export async function GET(request: NextRequest) {
   if (!session) return jsonError("Нэвтрэх шаардлагатай.", 401);
   const creator = session.role === "admin";
   const { since } = revenueWindow(creator ? 30 : 90);
-  const [series, settingsSnap, paymentSnap, staffSnap, plusSnap, countSnap] = await Promise.all([
+  const [series, settingsSnap, paymentSnap, staffSnap, plusSnap, countSnap, views] = await Promise.all([
     listSeries(),
     adminDb().collection("settings").doc("app").get(),
     paymentsWithoutQr(adminDb().collection("payments").where("createdAt", ">=", since)).get(),
     adminDb().collection("admins").get(),
     creator ? Promise.resolve(null) : adminDb().collection("users").where("plan", "==", "Plus").get(),
     creator ? Promise.resolve(null) : adminDb().collection("users").count().get(),
+    creator ? loadPeriodViews(since) : Promise.resolve([]),
   ]);
   const payments = paymentSnap.docs.map((item) => mapPayment(item.id, item.data() as Omit<Payment, "id">));
   const staff = staffSnap.docs.map((item) => ({
@@ -34,7 +36,7 @@ export async function GET(request: NextRequest) {
   const settings = mergeSettings(settingsSnap.data() as Partial<Settings> | undefined);
   if (creator) {
     const profile = staffSnap.docs.find((item) => item.id === session.adminId)?.data();
-    const revenue = scopedRevenue(revenueForWindow(series, payments, staff, since), session);
+    const revenue = scopedRevenue(revenueForWindow(series, payments, staff, since, views), session);
     return NextResponse.json({
       session: {
         ...session,
