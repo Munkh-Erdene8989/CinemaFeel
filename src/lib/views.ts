@@ -20,6 +20,33 @@ export function sumShards(shards: { views?: unknown; uniqueViews?: unknown }[]) 
   );
 }
 
+/** Stored series fields lag the shard counters until a rollup runs. */
+export function liveViewCounts(
+  stored: { views?: unknown; uniqueViews?: unknown; viewsSharded?: unknown },
+  shards: { id?: string; views?: unknown; uniqueViews?: unknown }[],
+) {
+  const summed = sumShards(shards);
+  const views = Math.max(0, Number(stored.views) || 0);
+  const uniqueViews = Math.max(0, Number(stored.uniqueViews) || 0);
+  if (shards.length === 0) return { views, uniqueViews };
+  const migrated = stored.viewsSharded === true || shards.some((shard) => shard.id === "base");
+  if (migrated) return summed;
+  return { views: summed.views + views, uniqueViews: summed.uniqueViews + uniqueViews };
+}
+
+export async function shardTotalsBySeries() {
+  const snap = await adminDb().collectionGroup("viewShards").select("views", "uniqueViews").get();
+  const bySeries = new Map<string, { id: string; views?: unknown; uniqueViews?: unknown }[]>();
+  for (const item of snap.docs) {
+    const seriesId = item.ref.parent.parent?.id;
+    if (!seriesId) continue;
+    const shards = bySeries.get(seriesId) ?? [];
+    shards.push({ id: item.id, views: item.get("views"), uniqueViews: item.get("uniqueViews") });
+    bySeries.set(seriesId, shards);
+  }
+  return bySeries;
+}
+
 export function isAlreadyExists(error: unknown) {
   const code = (error as { code?: number | string }).code;
   return code === 6 || code === "already-exists" || code === "ALREADY_EXISTS";

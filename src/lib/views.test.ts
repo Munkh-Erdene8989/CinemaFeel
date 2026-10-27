@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { isAlreadyExists, isRetryableWrite, sumShards, VIEW_SHARD_COUNT, viewShardId } from "./views.ts";
+import { isAlreadyExists, isRetryableWrite, liveViewCounts, sumShards, VIEW_SHARD_COUNT, viewShardId } from "./views.ts";
 
 test("shard ids stay inside the counter spread", () => {
   for (let index = 0; index < 100; index += 1) {
@@ -14,6 +14,21 @@ test("shard totals add every piece, including the stored base", () => {
   assert.deepEqual(
     sumShards([{ views: 10, uniqueViews: 4 }, { views: "3", uniqueViews: 1 }, { views: -2, uniqueViews: "nope" }]),
     { views: 13, uniqueViews: 5 },
+  );
+});
+
+test("dashboard counts follow shards, and keep the pre-migration total once", () => {
+  assert.deepEqual(liveViewCounts({ views: 4, uniqueViews: 2 }, []), { views: 4, uniqueViews: 2 });
+  assert.deepEqual(
+    liveViewCounts({ views: 4, uniqueViews: 2, viewsSharded: false }, [{ id: "3", views: 9, uniqueViews: 1 }]),
+    { views: 13, uniqueViews: 3 },
+  );
+  assert.deepEqual(
+    liveViewCounts({ views: 4, uniqueViews: 2, viewsSharded: true }, [
+      { id: "base", views: 4, uniqueViews: 2 },
+      { id: "3", views: 9, uniqueViews: 1 },
+    ]),
+    { views: 13, uniqueViews: 3 },
   );
 });
 

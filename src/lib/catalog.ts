@@ -2,7 +2,8 @@ import { randomBytes, randomUUID } from "crypto";
 import { FieldValue, type DocumentData, type DocumentReference } from "firebase-admin/firestore";
 import { adminBucket, adminDb } from "./firebase-admin";
 import { seriesFromRecord, seriesWritePayload } from "./series-doc";
-import type { AdminSession, Episode, SeriesWithEpisodes } from "./types";
+import type { AdminSession, Episode, Series, SeriesWithEpisodes } from "./types";
+import { liveViewCounts, shardTotalsBySeries } from "./views";
 
 const shareAlphabet = "abcdefghjkmnpqrstuvwxyz23456789";
 
@@ -82,11 +83,19 @@ export function seriesPayload(body: Record<string, unknown>, createdAt = Date.no
   return seriesWritePayload(body, createdAt);
 }
 
-export async function listSeries(): Promise<SeriesWithEpisodes[]> {
-  const snap = await adminDb().collection("series").get();
+export async function loadSeriesWithViews(): Promise<Series[]> {
+  const [snap, shards] = await Promise.all([adminDb().collection("series").get(), shardTotalsBySeries()]);
   return snap.docs
-    .map((item) => ({ ...mapSeries(item.id, item.data()), episodeList: [] }))
+    .map((item) => ({
+      ...mapSeries(item.id, item.data()),
+      ...liveViewCounts(item.data(), shards.get(item.id) ?? []),
+    }))
     .sort((a, b) => b.createdAt - a.createdAt);
+}
+
+export async function listSeries(): Promise<SeriesWithEpisodes[]> {
+  const series = await loadSeriesWithViews();
+  return series.map((item) => ({ ...item, episodeList: [] }));
 }
 
 export async function listEpisodes(seriesRef: DocumentReference): Promise<Episode[]> {
