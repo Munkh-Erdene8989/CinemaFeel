@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildActivityReport, monthlyListPrice, scenarioWeight } from "./activity.ts";
+import { buildActivityReport, monthlyListPrice, scenarioWeight, weeklyListPrice } from "./activity.ts";
+import { WEEKLY_PRICE } from "./types.ts";
 
 const now = Date.UTC(2026, 9, 22);
 const day = 24 * 60 * 60 * 1000;
@@ -21,6 +22,8 @@ test("monthly price falls back when the setting is empty", () => {
   assert.equal(monthlyListPrice("14900"), 14900);
   assert.equal(monthlyListPrice("₮14 900"), 14900);
   assert.equal(monthlyListPrice(""), 14900);
+  assert.equal(weeklyListPrice(""), WEEKLY_PRICE);
+  assert.equal(weeklyListPrice("7 900"), 7900);
 });
 
 test("a renewed recent viewer of four titles is a high renewal inside seven days", () => {
@@ -81,7 +84,18 @@ test("an unpaid viewer of two recent titles is a new weekly package", () => {
   });
   assert.equal(report.windows[7].acquisition.length, 1);
   assert.equal(report.windows[7].acquisition[0]?.uid, "new");
-  assert.equal(report.windows[7].acquisition[0]?.price, 6900);
+  assert.equal(report.windows[7].acquisition[0]?.price, WEEKLY_PRICE);
+  assert.equal(report.weeklyPrice, WEEKLY_PRICE);
+  const custom = buildActivityReport({
+    now,
+    monthlyPrice: 14900,
+    weeklyPrice: 5000,
+    users: [user("new")],
+    views: views("new", 3, 1),
+    payments: [],
+  });
+  assert.equal(custom.weeklyPrice, 5000);
+  assert.equal(custom.windows[7].acquisition[0]?.price, 5000);
   assert.equal(report.windows[7].acquisition[0]?.weight, 0.2);
   assert.equal(report.windows[30].acquisition.length, 2);
   assert.equal(report.groups.prospects.length, 2);

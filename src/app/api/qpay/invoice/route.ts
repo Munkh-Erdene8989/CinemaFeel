@@ -7,7 +7,7 @@ import { adminDb } from "@/lib/firebase-admin";
 import { todayStamp } from "@/lib/format";
 import { jsonError, readUser, siteOrigin } from "@/lib/http";
 import { createInvoice } from "@/lib/qpay";
-import { defaultSettings } from "@/lib/types";
+import { defaultSettings, mergeSettings, settingAmount, WEEKLY_PRICE, type Settings } from "@/lib/types";
 
 export async function POST(request: NextRequest) {
   const user = await readUser(request);
@@ -18,8 +18,10 @@ export async function POST(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as { mode?: string; seriesId?: string | null; code?: string };
   const settingsSnap = await adminDb().collection("settings").doc("app").get();
-  const monthly = Number(settingsSnap.data()?.price || defaultSettings.price);
-  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly, uid: user.uid });
+  const settings = mergeSettings(settingsSnap.data() as Partial<Settings> | undefined);
+  const monthly = settingAmount(settings.price, Number(defaultSettings.price));
+  const weekly = settingAmount(settings.weeklyPrice, WEEKLY_PRICE);
+  const quote = await viewerCheckoutQuote({ mode: body.mode, seriesId: body.seriesId, code: body.code, monthlyPrice: monthly, weeklyPrice: weekly, uid: user.uid });
   if (!quote.ok) return jsonError(quote.error, quote.status);
   if (quote.mode === "single" && quote.seriesId) {
     const seriesSnap = await adminDb().collection("series").doc(quote.seriesId).get();

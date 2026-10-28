@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { clientAuth } from "@/lib/firebase";
-import { WEEKLY_PRICE, type CheckoutMode } from "@/lib/types";
+import { settingAmount, WEEKLY_PRICE, type CheckoutMode } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { useSite } from "./site-provider";
 
@@ -44,6 +44,7 @@ export function RenewView({ code }: { code: string }) {
   const live = Boolean(offer && !offer.used && !offer.expired);
   const now = useNow(live);
   const monthly = Number(settings.price || 14900);
+  const weekly = settingAmount(settings.weeklyPrice, WEEKLY_PRICE);
   const percent = live ? offer?.percent || 0 : 0;
   const left = offer ? offer.expiresAt - now : 0;
   const expired = Boolean(offer && (offer.expired || offer.used || left <= 0));
@@ -126,8 +127,8 @@ export function RenewView({ code }: { code: string }) {
                 <span className="mt-1 block text-xs text-[#ffc1ca]">Бүх киног үзэх</span>
               </span>
               <span className="text-right">
-                {percent > 0 && <span className="block text-xs text-[#ffc1ca] line-through">{formatMoney(WEEKLY_PRICE)}</span>}
-                <span className="text-lg font-black">{formatMoney(percent > 0 ? discounted(WEEKLY_PRICE, percent) : WEEKLY_PRICE)}</span>
+                {percent > 0 && <span className="block text-xs text-[#ffc1ca] line-through">{formatMoney(weekly)}</span>}
+                <span className="text-lg font-black">{formatMoney(percent > 0 ? discounted(weekly, percent) : weekly)}</span>
               </span>
             </button>
           </div>

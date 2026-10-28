@@ -66,7 +66,7 @@ export function releaseSmsText(title: string, link: string) {
   return `${head}${cleanTitle.slice(0, room - ellipsis.length).trimEnd()}${ellipsis}${tail}`;
 }
 
-type SendResult = { ok: true } | { ok: false; error: string };
+type SendResult = { ok: true } | { ok: false; error: string; code?: string };
 
 function explain(code: string, fallback: string) {
   if (code === "trial_recipient") return "WeSend туршилтын горимд зөвхөн баталгаажсан утас, имэйл рүү илгээнэ.";
@@ -78,9 +78,9 @@ function explain(code: string, fallback: string) {
   return fallback;
 }
 
-async function postBulk(path: string, body: unknown, idempotencyKey: string): Promise<SendResult> {
+async function postJson(path: string, body: unknown, idempotencyKey: string, timeoutMs?: number): Promise<{ ok: true } | { ok: false; error: string; code: string }> {
   const key = process.env.WESEND_API_KEY?.trim();
-  if (!key) return { ok: false, error: "WeSend тохиргоо дутуу байна." };
+  if (!key) return { ok: false, error: "WeSend тохиргоо дутуу байна.", code: "not_configured" };
   let response: Response;
   try {
     response = await fetch(`${API}${path}`, {
@@ -91,10 +91,11 @@ async function postBulk(path: string, body: unknown, idempotencyKey: string): Pr
         "Idempotency-Key": idempotencyKey,
       },
       body: JSON.stringify(body),
+      signal: timeoutMs ? AbortSignal.timeout(timeoutMs) : undefined,
     });
   } catch (error) {
     console.error("wesend request failed", error);
-    return { ok: false, error: "WeSend рүү холбогдож чадсангүй." };
+    return { ok: false, error: "WeSend рүү холбогдож чадсангүй.", code: "network" };
   }
   const data = (await response.json().catch(() => ({}))) as { error?: { code?: string; message?: string } | string };
   if (response.ok) return { ok: true };
@@ -102,7 +103,23 @@ async function postBulk(path: string, body: unknown, idempotencyKey: string): Pr
   const code = typeof error === "object" && error ? String(error.code ?? "") : "";
   const message = typeof error === "string" ? error : error?.message || "";
   console.error("wesend send failed", response.status, code, message);
-  return { ok: false, error: explain(code, "Мэдэгдэл илгээгдсэнгүй.") };
+  return { ok: false, error: explain(code, "Мэдэгдэл илгээгдсэнгүй."), code: code || "unknown" };
+}
+
+export function wesendOutOfCredit(code: string | undefined) {
+  return code === "insufficient_credits";
+}
+
+export function otpSmsText(code: string) {
+  return `CinemaFeel OTP: ${code}`;
+}
+
+export async function sendOtpSms(phone: string, code: string, idempotencyKey: string) {
+  return postJson("/sms", { to: phone, text: otpSmsText(code) }, idempotencyKey, 15_000);
+}
+
+async function postBulk(path: string, body: unknown, idempotencyKey: string): Promise<SendResult> {
+  return postJson(path, body, idempotencyKey);
 }
 
 async function sendChunks(path: string, recipients: string[], seriesId: string, channel: "email" | "sms", payload: (chunk: string[]) => unknown) {

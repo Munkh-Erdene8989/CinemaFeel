@@ -8,8 +8,18 @@ export async function POST(request: NextRequest) {
   try {
     const result = await startPhoneLogin(body.phone ?? "", siteOrigin(request));
     if (!result.ok) return jsonError(result.error, result.status);
+    if (result.delivery === "otp") {
+      return NextResponse.json({
+        sessionId: result.sessionId,
+        delivery: "otp",
+        expiresAt: result.expiresAt,
+        demo: false,
+      });
+    }
     return NextResponse.json({
       sessionId: result.sessionId,
+      delivery: "mo",
+      fallback: result.fallback,
       displayInstruction: result.displayInstruction,
       code: result.code,
       smsUri: result.smsUri,

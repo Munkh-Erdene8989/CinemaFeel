@@ -36,6 +36,8 @@ test("a paid creator watches their own film without buying it again", () => {
 
 test("checkout amounts follow the mode", () => {
   assert.equal(checkoutListAmount("weekly", { monthlyPrice: 14900 }), WEEKLY_PRICE);
+  assert.equal(checkoutListAmount("weekly", { monthlyPrice: 14900, weeklyPrice: 7900 }), 7900);
+  assert.equal(checkoutListAmount("weekly", { monthlyPrice: 14900, weeklyPrice: 0 }), WEEKLY_PRICE);
   assert.equal(checkoutListAmount("subscription", { monthlyPrice: 14900 }), 14900);
   assert.equal(checkoutListAmount("single", { monthlyPrice: 14900, singlePrice: 3900 }), 3900);
   assert.equal(viewerCheckoutMode("creator"), "subscription");

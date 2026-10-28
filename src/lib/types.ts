@@ -8,8 +8,13 @@ export type UserStatus = "Идэвхтэй" | "Түр зогссон";
 export type PaymentStatus = "Хүлээгдэж буй" | "Амжилттай" | "Буцаагдсан" | "Амжилтгүй";
 export type CheckoutMode = "single" | "weekly" | "subscription" | "creator";
 
-export const WEEKLY_PRICE = 6900;
+export const WEEKLY_PRICE = 7900;
 export const WEEKLY_DAYS = 7;
+
+export function settingAmount(value: unknown, fallback: number) {
+  const price = Number(String(value ?? "").replace(/\D/g, ""));
+  return price > 0 ? price : fallback;
+}
 
 export type AdminRole = "super" | "admin";
 
@@ -210,6 +215,7 @@ export type Settings = {
   name: string;
   email: string;
   price: string;
+  weeklyPrice: string;
   maintenance: boolean;
   registration: boolean;
   notifications: boolean;
@@ -226,6 +232,7 @@ export const defaultSettings: Settings = {
   name: "CinemaFeel",
   email: "support@cinemafeel.mn",
   price: "14900",
+  weeklyPrice: String(WEEKLY_PRICE),
   maintenance: false,
   registration: true,
   notifications: true,
@@ -255,6 +262,7 @@ export function mergeSettings(data?: Partial<Settings> | null): Settings {
     ...defaultSettings,
     ...data,
     ...marketingFromSettings(data),
+    weeklyPrice: String(settingAmount(data?.weeklyPrice, WEEKLY_PRICE)),
     genres: normalizeGenres(data?.genres),
   };
 }

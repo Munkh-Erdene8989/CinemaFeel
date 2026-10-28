@@ -1,12 +1,12 @@
 "use client";
 
-import { WEEKLY_PRICE } from "@/lib/types";
+import { settingAmount, WEEKLY_PRICE } from "@/lib/types";
 import { accountIdentity, accountInitial, formatDate, formatMoney } from "@/lib/format";
 import { Icon } from "./icons";
 import { useSite } from "./site-provider";
 
 export function AccountView() {
-  const { user, profile, subscribed, owned, payments, beginCheckout, openAuth, logout } = useSite();
+  const { user, profile, subscribed, owned, payments, settings, beginCheckout, openAuth, logout } = useSite();
   if (!user) {
     return (
       <section className="mx-auto grid min-h-screen max-w-xl place-items-center px-5 pt-24 text-center">
@@ -39,7 +39,7 @@ export function AccountView() {
           <p className={`mt-3 text-xl font-black ${subscribed ? "text-emerald-400" : "text-white"}`}>{profile?.status === "Түр зогссон" ? "Түр зогссон" : subscribed ? "Plus идэвхтэй" : "Үндсэн эрх"}</p>
           <p className="mt-2 text-xs leading-5 text-zinc-600">{subscribed && profile?.subscriptionExpiresAt ? `Дуусах: ${formatDate(profile.subscriptionExpiresAt)}` : "Зөвхөн үнэгүй болон авсан кино"}</p>
           {!subscribed && profile?.status !== "Түр зогссон" && (
-            <button onClick={() => beginCheckout("weekly")} className="mt-5 text-xs font-bold text-[#ff6679]">7 хоног · {formatMoney(WEEKLY_PRICE)} →</button>
+            <button onClick={() => beginCheckout("weekly")} className="mt-5 text-xs font-bold text-[#ff6679]">7 хоног · {formatMoney(settingAmount(settings.weeklyPrice, WEEKLY_PRICE))} →</button>
           )}
         </div>
         <div data-rise data-delay="0.12" className="rounded-2xl border border-white/10 bg-white/[.03] p-6">

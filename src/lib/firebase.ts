@@ -1,5 +1,5 @@
 import { getApp, getApps, initializeApp, type FirebaseApp } from "firebase/app";
-import { getAuth } from "firebase/auth";
+import { browserLocalPersistence, getAuth, setPersistence, type Auth } from "firebase/auth";
 import { getFirestore } from "firebase/firestore";
 
 function config() {
@@ -30,8 +30,15 @@ export function getFirebaseApp(): FirebaseApp {
   return getApps().length ? getApp() : initializeApp(current);
 }
 
+const persistenceReady = new WeakSet<Auth>();
+
 export function clientAuth() {
-  return getAuth(getFirebaseApp());
+  const auth = getAuth(getFirebaseApp());
+  if (typeof window !== "undefined" && !persistenceReady.has(auth)) {
+    persistenceReady.add(auth);
+    void setPersistence(auth, browserLocalPersistence).catch(() => undefined);
+  }
+  return auth;
 }
 
 export function clientDb() {

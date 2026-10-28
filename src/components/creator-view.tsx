@@ -5,7 +5,7 @@ import { animate } from "animejs";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { alreadyEntitled } from "@/lib/entitlement";
-import { WEEKLY_PRICE } from "@/lib/types";
+import { settingAmount, WEEKLY_PRICE } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { creatorCatalog, creatorPath } from "@/lib/creator-site";
 import { MATURE_CATEGORY, coverFilm, isMature, isMatureLabel, matureCatalog, publicCatalog, readMatureConsent } from "@/lib/mature";
@@ -44,6 +44,7 @@ export function CreatorView({ username }: { username: string }) {
   const titleLead = titleWords.length > 1 ? titleWords.slice(0, -1).join(" ") : featured?.title ?? "";
   const titleAccent = titleWords.length > 1 ? titleWords[titleWords.length - 1] : "";
   const monthly = Number(settings.price || 14900);
+  const weekly = settingAmount(settings.weeklyPrice, WEEKLY_PRICE);
   const hasPaid = mine.some((film) => film.access !== "free");
   const ownsCorner = Boolean(creatorSite && profile?.creatorId === creatorSite.id);
   const name = creatorSite?.username === username ? creatorSite.name : username;
@@ -156,10 +157,10 @@ export function CreatorView({ username }: { username: string }) {
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ff6679]">CinemaFeel Plus</p>
               <h2 className="mt-2 text-xl font-black md:text-2xl">{name}-ийн төлбөртэй киног нээ</h2>
-              <p className="mt-2 text-xs text-zinc-400">7 хоног {formatMoney(WEEKLY_PRICE)} · Сард {formatMoney(monthly)}</p>
+              <p className="mt-2 text-xs text-zinc-400">7 хоног {formatMoney(weekly)} · Сард {formatMoney(monthly)}</p>
             </div>
             <button onClick={() => beginCheckout("weekly", featured ?? null)} className="offer-glow shrink-0 rounded-full bg-[#ff3d56] px-6 py-3 text-sm font-extrabold">
-              7 хоног · {formatMoney(WEEKLY_PRICE)}
+              7 хоног · {formatMoney(weekly)}
             </button>
           </div>
         </section>

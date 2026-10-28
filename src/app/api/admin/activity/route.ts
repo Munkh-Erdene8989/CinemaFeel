@@ -1,8 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { buildActivityReport, monthlyListPrice } from "@/lib/activity";
+import { buildActivityReport, monthlyListPrice, weeklyListPrice } from "@/lib/activity";
 import { adminDb } from "@/lib/firebase-admin";
 import { requireSuper } from "@/lib/http";
-import { defaultSettings } from "@/lib/types";
+import { mergeSettings, type Settings } from "@/lib/types";
 
 export const dynamic = "force-dynamic";
 
@@ -20,9 +20,10 @@ export async function GET(request: NextRequest) {
     db.collection("views").select("uid", "seriesId", "createdAt").get(),
     db.collection("payments").select("uid", "mode", "status", "amount", "createdAt").get(),
   ]);
-  const price = text(settingsSnap.data()?.price) || defaultSettings.price;
+  const settings = mergeSettings(settingsSnap.data() as Partial<Settings> | undefined);
   const report = buildActivityReport({
-    monthlyPrice: monthlyListPrice(price),
+    monthlyPrice: monthlyListPrice(settings.price),
+    weeklyPrice: weeklyListPrice(settings.weeklyPrice),
     users: userSnap.docs.map((item) => {
       const data = item.data();
       return {

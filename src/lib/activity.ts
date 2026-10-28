@@ -1,5 +1,5 @@
 import { isSubscriptionCheckout } from "./entitlement";
-import { WEEKLY_PRICE } from "./types";
+import { settingAmount, WEEKLY_PRICE } from "./types";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -89,16 +89,19 @@ export function scenarioWeight(band: ActivityBand, kind: ActivityKind, scenario:
 }
 
 export function monthlyListPrice(value: unknown) {
-  const price = Number(String(value ?? "").replace(/\D/g, ""));
-  return price > 0 ? price : 14900;
+  return settingAmount(value, 14900);
+}
+
+export function weeklyListPrice(value: unknown) {
+  return settingAmount(value, WEEKLY_PRICE);
 }
 
 function money(price: number, weight: number) {
   return Math.round(price * weight);
 }
 
-function listPrice(mode: PackageMode, monthlyPrice: number) {
-  return mode === "weekly" ? WEEKLY_PRICE : monthlyPrice;
+function listPrice(mode: PackageMode, monthlyPrice: number, weeklyPrice: number) {
+  return mode === "weekly" ? weeklyPrice : monthlyPrice;
 }
 
 function renewalBand(viewer: ActivityViewer, now: number): { band: ActivityBand; reason: string } {
@@ -151,12 +154,14 @@ function byRecent(left: ActivityViewer, right: ActivityViewer) {
 export function buildActivityReport(input: {
   now?: number;
   monthlyPrice: number;
+  weeklyPrice?: number;
   users: ActivityUserInput[];
   views: ActivityViewInput[];
   payments: ActivityPaymentInput[];
 }): ActivityReport {
   const now = input.now ?? Date.now();
   const monthlyPrice = input.monthlyPrice > 0 ? input.monthlyPrice : 14900;
+  const weeklyPrice = input.weeklyPrice && input.weeklyPrice > 0 ? input.weeklyPrice : WEEKLY_PRICE;
   const watched = new Map<string, { seriesIds: Set<string>; lastViewAt: number }>();
   for (const view of input.views) {
     if (!view.uid || !view.seriesId) continue;
@@ -174,13 +179,13 @@ export function buildActivityReport(input: {
     const amount = Number(payment.amount) || 0;
     const current = paid.get(payment.uid);
     if (!current) {
-      paid.set(payment.uid, { count: 1, mode, price: amount > 0 ? amount : listPrice(mode, monthlyPrice), createdAt });
+      paid.set(payment.uid, { count: 1, mode, price: amount > 0 ? amount : listPrice(mode, monthlyPrice, weeklyPrice), createdAt });
       continue;
     }
     current.count += 1;
     if (createdAt >= current.createdAt) {
       current.mode = mode;
-      current.price = amount > 0 ? amount : listPrice(mode, monthlyPrice);
+      current.price = amount > 0 ? amount : listPrice(mode, monthlyPrice, weeklyPrice);
       current.createdAt = createdAt;
     }
   }
@@ -218,14 +223,14 @@ export function buildActivityReport(input: {
       .filter((viewer) => active(viewer) && viewer.expiresAt <= now + days * DAY_MS)
       .map((viewer) => {
         const picked = renewalBand(viewer, now);
-        return forecastRow(viewer, "renewal", picked.band, picked.reason, viewer.packagePrice || listPrice(viewer.packageMode || "subscription", monthlyPrice));
+        return forecastRow(viewer, "renewal", picked.band, picked.reason, viewer.packagePrice || listPrice(viewer.packageMode || "subscription", monthlyPrice, weeklyPrice));
       })
       .sort(byAmount);
     const acquisition = viewers
       .filter((viewer) => viewer.packagePayments === 0 && viewer.expiresAt <= now && viewer.titles >= 2 && viewer.lastViewAt > 0 && now - viewer.lastViewAt <= days * DAY_MS)
       .map((viewer) => {
         const picked = acquisitionBand(viewer, now);
-        return forecastRow(viewer, "acquisition", picked.band, picked.reason, WEEKLY_PRICE);
+        return forecastRow(viewer, "acquisition", picked.band, picked.reason, weeklyPrice);
       })
       .sort(byAmount);
     windows[days] = {
@@ -235,5 +240,5 @@ export function buildActivityReport(input: {
     };
   }
 
-  return { generatedAt: now, monthlyPrice, weeklyPrice: WEEKLY_PRICE, groups, windows };
+  return { generatedAt: now, monthlyPrice, weeklyPrice, groups, windows };
 }

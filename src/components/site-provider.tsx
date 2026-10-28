@@ -7,9 +7,9 @@ import { collection, doc, onSnapshot, query, where } from "firebase/firestore";
 import { creatorUsernameFromPath, type PublicCreator } from "@/lib/creator-site";
 import { seriesFromRecord } from "@/lib/series-doc";
 import type { AppUser, CheckoutMode, Payment, Series, Settings } from "@/lib/types";
-import { defaultSettings, mergeSettings } from "@/lib/types";
+import { defaultSettings, mergeSettings, settingAmount, WEEKLY_PRICE } from "@/lib/types";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
-import { sessionExpired, sessionRemainingMs } from "@/lib/session-ttl";
+import { sessionCheckDelayMs, sessionExpired } from "@/lib/session-ttl";
 import { alreadyEntitled } from "@/lib/entitlement";
 import { playbackMark } from "@/lib/playback-mark";
 import { accountInitial, subscriptionActive } from "@/lib/format";
@@ -78,6 +78,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
   const subscribed = subscriptionActive(profile);
   const accessReady = !user || Boolean(profile);
   const monthlyPrice = Number(settings.price || 14900);
+  const weeklyPrice = settingAmount(settings.weeklyPrice, WEEKLY_PRICE);
 
   const notify = (message: string) => {
     setToast(message);
@@ -105,6 +106,13 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       notify("Нэвтрэлтийн хугацаа дууссан. Дахин нэвтэрнэ үү.");
       void signOut(auth);
     };
+    const armSession = (authTime: number) => {
+      window.clearTimeout(sessionTimer);
+      sessionTimer = window.setTimeout(() => {
+        if (sessionExpired(authTime)) expireSession();
+        else armSession(authTime);
+      }, sessionCheckDelayMs(authTime));
+    };
     const stopAuth = onAuthStateChanged(auth, async (next) => {
       window.clearTimeout(sessionTimer);
       if (!next) {
@@ -121,7 +129,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
         return;
       }
       setUser(next);
-      sessionTimer = window.setTimeout(expireSession, sessionRemainingMs(authTime));
+      armSession(authTime);
       const response = await fetch("/api/auth/bootstrap", {
         method: "POST",
         headers: { Authorization: `Bearer ${result.token}` },
@@ -390,6 +398,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
           <FilmModal
             film={selected}
             monthlyPrice={monthlyPrice}
+            weeklyPrice={weeklyPrice}
             onClose={() => setSelected(null)}
             isOwned={alreadyEntitled(selected, { ownedIds: owned, subscribed: false, creatorId: profile?.creatorId })}
             subscribed={subscribed}
@@ -408,6 +417,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             mode={checkout}
             film={selected}
             monthlyPrice={monthlyPrice}
+            weeklyPrice={weeklyPrice}
             initialCode={checkoutCode}
             onModeChange={setCheckout}
             onClose={() => {

@@ -27,6 +27,7 @@ await db.collection("settings").doc("app").set({
   name: "CinemaFeel",
   email: "support@cinemafeel.mn",
   price: "14900",
+  weeklyPrice: "7900",
   maintenance: false,
   registration: true,
   notifications: true,

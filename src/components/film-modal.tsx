@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WEEKLY_PRICE, type CheckoutMode, type Series } from "@/lib/types";
+import { type CheckoutMode, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { Icon, Modal } from "./icons";
@@ -18,6 +18,7 @@ type YoutubePreview = {
 export function FilmModal({
   film,
   monthlyPrice,
+  weeklyPrice,
   onClose,
   isOwned,
   subscribed,
@@ -29,6 +30,7 @@ export function FilmModal({
 }: {
   film: Series;
   monthlyPrice: number;
+  weeklyPrice: number;
   onClose: () => void;
   isOwned: boolean;
   subscribed: boolean;
@@ -95,7 +97,7 @@ export function FilmModal({
               className="offer-glow absolute left-1/2 top-1/2 z-10 w-[min(15.5rem,78%)] -translate-x-1/2 -translate-y-1/2 rounded-3xl border border-[#ff8a9a]/50 bg-[#14080c]/75 px-6 py-5 text-center backdrop-blur-md"
             >
               <span className="text-[10px] font-black uppercase tracking-[0.22em] text-[#ff8a9a]">Шинэ · 7 хоног</span>
-              <span className="mt-2 block text-4xl font-black tracking-tight text-white">{formatMoney(WEEKLY_PRICE)}</span>
+              <span className="mt-2 block text-4xl font-black tracking-tight text-white">{formatMoney(weeklyPrice)}</span>
               <span className="mt-2 block text-xs font-bold text-zinc-200">Бүх киног үзэх</span>
             </button>
           )}
@@ -125,7 +127,7 @@ export function FilmModal({
                 </button>
                 <button onClick={() => onCheckout("weekly")} className="offer-glow mt-3 flex h-14 w-full items-center justify-between rounded-xl border border-[#ff8a9a]/50 bg-[#ff3d56] px-5 text-sm font-extrabold text-white">
                   <span>7 хоног · бүх кино</span>
-                  <span>{formatMoney(WEEKLY_PRICE)}</span>
+                  <span>{formatMoney(weeklyPrice)}</span>
                 </button>
                 <div className="my-4 flex items-center gap-3 text-[10px] font-bold text-zinc-600">
                   <span className="h-px flex-1 bg-white/10" />

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { assertAdmin, jsonError, requireSuper } from "@/lib/http";
 import { marketingFromSettings } from "@/lib/marketing";
-import { defaultSettings, mergeSettings, normalizeGenres, type Settings } from "@/lib/types";
+import { defaultSettings, mergeSettings, normalizeGenres, settingAmount, WEEKLY_PRICE, type Settings } from "@/lib/types";
 
 export async function GET(request: NextRequest) {
   if (!(await assertAdmin(request))) return jsonError("Нэвтрэх шаардлагатай.", 401);
@@ -20,6 +20,7 @@ export async function PUT(request: NextRequest) {
     name: String(body.name || defaultSettings.name),
     email: String(body.email || defaultSettings.email),
     price: String(body.price || defaultSettings.price).replace(/\D/g, "") || defaultSettings.price,
+    weeklyPrice: String(settingAmount(body.weeklyPrice, WEEKLY_PRICE)),
     maintenance: Boolean(body.maintenance),
     registration: Boolean(body.registration),
     notifications: Boolean(body.notifications),

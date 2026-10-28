@@ -12,9 +12,9 @@ export function viewerCheckoutMode(mode?: string): "single" | "weekly" | "subscr
   return "subscription";
 }
 
-export function checkoutListAmount(mode: string, input: { monthlyPrice: number; singlePrice?: number }) {
+export function checkoutListAmount(mode: string, input: { monthlyPrice: number; weeklyPrice?: number; singlePrice?: number }) {
   if (mode === "single") return input.singlePrice ?? 0;
-  if (mode === "weekly") return WEEKLY_PRICE;
+  if (mode === "weekly") return input.weeklyPrice && input.weeklyPrice > 0 ? input.weeklyPrice : WEEKLY_PRICE;
   return input.monthlyPrice;
 }
 

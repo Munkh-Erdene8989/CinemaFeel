@@ -6,7 +6,7 @@ import { Icon, Modal } from "./icons";
 import { StepMotion } from "./motion";
 import { clientAuth } from "@/lib/firebase";
 
-type Step = "start" | "otp" | "sms";
+type Step = "start" | "otp" | "sms" | "code";
 type Method = "email" | "phone";
 
 type SmsSession = {
@@ -15,6 +15,18 @@ type SmsSession = {
   code: string;
   smsUri: string;
   demo: boolean;
+  fallback?: boolean;
+};
+
+type PhoneStart = {
+  sessionId?: string;
+  delivery?: "otp" | "mo";
+  fallback?: boolean;
+  displayInstruction?: string;
+  code?: string;
+  smsUri?: string;
+  demo?: boolean;
+  error?: string;
 };
 
 function codeRange(instruction: string, code: string) {
@@ -93,6 +105,8 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
   const [phone, setPhone] = useState("");
   const [otp, setOtp] = useState("");
   const [sms, setSms] = useState<SmsSession | null>(null);
+  const [phoneSession, setPhoneSession] = useState("");
+  const [retryIn, setRetryIn] = useState(0);
   const [expired, setExpired] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -111,6 +125,12 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
       setError("Нэвтрэхэд алдаа гарлаа.");
     }
   };
+
+  useEffect(() => {
+    if (retryIn <= 0) return;
+    const timer = window.setTimeout(() => setRetryIn((value) => Math.max(0, value - 1)), 1000);
+    return () => window.clearTimeout(timer);
+  }, [retryIn]);
 
   useEffect(() => {
     if (step !== "sms" || !sms?.sessionId || expired) return;
@@ -202,20 +222,54 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ phone }),
     });
-    const data = (await response.json()) as SmsSession & { error?: string };
+    const data = (await response.json()) as PhoneStart;
     setLoading(false);
     if (!response.ok || !data.sessionId) {
       setError(data.error || "Утасны баталгаажуулалт эхлүүлж чадсангүй.");
       return;
     }
+    if (data.delivery === "otp") {
+      setPhoneSession(data.sessionId);
+      setSms(null);
+      setOtp("");
+      setRetryIn(60);
+      setStep("code");
+      return;
+    }
     setSms({
       sessionId: data.sessionId,
-      displayInstruction: data.displayInstruction,
-      code: data.code,
-      smsUri: data.smsUri,
+      displayInstruction: data.displayInstruction || "",
+      code: data.code || "",
+      smsUri: data.smsUri || "",
       demo: Boolean(data.demo),
+      fallback: Boolean(data.fallback),
     });
     setStep("sms");
+  };
+
+  const verifyPhone = async () => {
+    if (otp.length !== 4) {
+      setError("4 оронтой код оруулна уу.");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    const response = await fetch("/api/auth/phone/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ sessionId: phoneSession, code: otp }),
+    });
+    const data = (await response.json()) as { error?: string; token?: string };
+    if (!response.ok || !data.token) {
+      setLoading(false);
+      setError(data.error || "Код буруу байна.");
+      return;
+    }
+    try {
+      await finish(data.token);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const confirmDemo = async () => {
@@ -259,7 +313,7 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
     }
   };
 
-  const icon = step === "otp" ? "lock" : step === "sms" || method === "phone" ? "phone" : "mail";
+  const icon = step === "otp" || step === "code" ? "lock" : step === "sms" || method === "phone" ? "phone" : "mail";
 
   return (
     <Modal onClose={onClose} priority>
@@ -268,7 +322,7 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
           <Icon name={icon} className="h-6 w-6" />
         </div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ff536a]">CinemaFeel-д тавтай морил</p>
-        <h2 className="mt-2 text-2xl font-black">{step === "start" ? "Нэвтрэх" : step === "otp" ? "Код баталгаажуулах" : "Дугаараа баталгаажуулах"}</h2>
+        <h2 className="mt-2 text-2xl font-black">{step === "start" ? "Нэвтрэх" : step === "sms" ? "Дугаараа баталгаажуулах" : "Код баталгаажуулах"}</h2>
         <p className="mt-3 text-sm leading-6 text-zinc-500">
           {step === "start" && "Google, email эсвэл утасны дугаараар нэвтэрнэ. Нууц үг шаардлагагүй."}
           {step === "otp" && (
@@ -276,7 +330,12 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
               <b className="text-zinc-300">{email}</b> хаяг руу илгээсэн 6 оронтой кодыг оруулна уу.
             </>
           )}
-          {step === "sms" && "Та өөрөө доорх кодыг мессежээр илгээнэ. Бид танд код илгээхгүй."}
+          {step === "code" && (
+            <>
+              <b className="text-zinc-300">{phone}</b> дугаар руу CinemaFeel OTP гэсэн 4 оронтой код илгээлээ.
+            </>
+          )}
+          {step === "sms" && (sms?.fallback ? "SMS илгээх кредит дууссан. Та өөрөө доорх кодыг мессежээр илгээнэ." : "Та өөрөө доорх кодыг мессежээр илгээнэ. Бид танд код илгээхгүй.")}
         </p>
         {step === "start" && (
           <>
@@ -321,6 +380,18 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
             </div>
           </div>
         )}
+        {step === "code" && (
+          <div className="mt-7">
+            <span className="mb-2 block text-xs font-bold text-zinc-400">БАТАЛГААЖУУЛАХ КОД</span>
+            <input autoFocus value={otp} onChange={(e) => setOtp(e.target.value.replace(/\D/g, "").slice(0, 4))} onKeyDown={(e) => e.key === "Enter" && verifyPhone()} inputMode="numeric" autoComplete="one-time-code" placeholder="0000" className="h-14 w-full rounded-xl border border-white/10 bg-white/[0.04] px-4 text-center text-2xl font-black tracking-[0.45em] outline-none transition focus:border-[#ff536a]" />
+            <div className="mt-3 flex items-center justify-between text-xs">
+              <span className="text-zinc-600">Код 5 минут хүчинтэй</span>
+              <button disabled={retryIn > 0 || loading} onClick={startPhone} className="font-bold text-zinc-300 hover:text-white disabled:text-zinc-600">
+                {retryIn > 0 ? `Дахин илгээх ${retryIn}с` : "Дахин илгээх"}
+              </button>
+            </div>
+          </div>
+        )}
         {step === "sms" && sms && (
           <div className="mt-7">
             <SmsInstruction instruction={sms.displayInstruction} code={sms.code} />
@@ -345,12 +416,12 @@ export function AuthModal({ onClose, onSuccess }: { onClose: () => void; onSucce
         )}
         {error && <p className="mt-3 rounded-lg bg-red-500/10 px-3 py-2 text-xs text-red-400">{error}</p>}
         {step !== "sms" && (
-          <button disabled={loading} onClick={step === "otp" ? verify : method === "phone" ? startPhone : submitEmail} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-extrabold text-black transition hover:bg-zinc-200 disabled:opacity-60">
-            {loading ? "Түр хүлээнэ үү..." : step === "otp" ? "Баталгаажуулж нэвтрэх" : method === "phone" ? "SMS заавар авах" : "Код авах"} <Icon name="arrow" className="h-4 w-4 rotate-180" />
+          <button disabled={loading} onClick={step === "otp" ? verify : step === "code" ? verifyPhone : method === "phone" ? startPhone : submitEmail} className="mt-6 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-white text-sm font-extrabold text-black transition hover:bg-zinc-200 disabled:opacity-60">
+            {loading ? "Түр хүлээнэ үү..." : step === "otp" || step === "code" ? "Баталгаажуулж нэвтрэх" : "Код авах"} <Icon name="arrow" className="h-4 w-4 rotate-180" />
           </button>
         )}
         {step !== "start" && (
-          <button onClick={() => { setStep("start"); setError(""); setExpired(false); setSms(null); }} className="mt-4 w-full text-xs font-bold text-zinc-500 hover:text-white">
+          <button onClick={() => { setStep("start"); setError(""); setExpired(false); setSms(null); setPhoneSession(""); setOtp(""); setRetryIn(0); }} className="mt-4 w-full text-xs font-bold text-zinc-500 hover:text-white">
             {step === "otp" ? "Email хаягаа солих" : "Дугаараа солих"}
           </button>
         )}

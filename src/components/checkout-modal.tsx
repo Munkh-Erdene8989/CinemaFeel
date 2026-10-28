@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { checkoutListAmount, SUBSCRIPTION_DAYS } from "@/lib/entitlement";
-import { WEEKLY_DAYS, WEEKLY_PRICE, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
+import { WEEKLY_DAYS, type CheckoutMode, type QPayUrl, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { Icon, Modal } from "./icons";
 import { StepMotion } from "./motion";
@@ -12,6 +12,7 @@ export function CheckoutModal({
   mode,
   film,
   monthlyPrice,
+  weeklyPrice,
   initialCode = "",
   onClose,
   onPaid,
@@ -20,6 +21,7 @@ export function CheckoutModal({
   mode: CheckoutMode;
   film: Series | null;
   monthlyPrice: number;
+  weeklyPrice: number;
   initialCode?: string;
   onClose: () => void;
   onPaid: () => void;
@@ -31,7 +33,7 @@ export function CheckoutModal({
   const [applied, setApplied] = useState<{ code: string; percent: number; originalAmount: number; amount: number } | null>(null);
   const [invoice, setInvoice] = useState<{ senderInvoiceNo: string; qrImage: string; urls: QPayUrl[] } | null>(null);
   const weekly = mode === "weekly";
-  const listPrice = checkoutListAmount(mode, { monthlyPrice, singlePrice: film?.price ?? 0 });
+  const listPrice = checkoutListAmount(mode, { monthlyPrice, weeklyPrice, singlePrice: film?.price ?? 0 });
   const total = applied?.amount ?? listPrice;
   const title = mode === "single" ? film?.title : weekly ? "CinemaFeel 7 хоногийн эрх" : "CinemaFeel сарын эрх";
   const label = mode === "single" ? "Киноны эрх" : weekly ? `${WEEKLY_DAYS} хоногийн эрх` : `${SUBSCRIPTION_DAYS} хоногийн эрх`;
@@ -163,7 +165,7 @@ export function CheckoutModal({
                 <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#ff8a9a]">Онцлох · 7 хоног</span>
                 <span className="mt-1 block text-sm font-bold text-white">Бүх киног үзэх</span>
               </span>
-              <span className="text-2xl font-black">{formatMoney(WEEKLY_PRICE)}</span>
+              <span className="text-2xl font-black">{formatMoney(weeklyPrice)}</span>
             </button>
           </div>
         )}
@@ -171,9 +173,9 @@ export function CheckoutModal({
           <button onClick={() => onModeChange("weekly")} className="offer-glow mt-6 flex w-full items-center justify-between rounded-2xl border border-[#ff8a9a]/50 bg-[#ff3d56]/15 px-4 py-4 text-left">
             <span>
               <span className="block text-[10px] font-black uppercase tracking-[0.18em] text-[#ff8a9a]">Шинэ · 7 хоног</span>
-              <span className="mt-1 block text-sm font-bold">Бүх киног {formatMoney(WEEKLY_PRICE)}-өөр үзэх</span>
+              <span className="mt-1 block text-sm font-bold">Бүх киног {formatMoney(weeklyPrice)}-өөр үзэх</span>
             </span>
-            <span className="text-xl font-black">{formatMoney(WEEKLY_PRICE)}</span>
+            <span className="text-xl font-black">{formatMoney(weeklyPrice)}</span>
           </button>
         )}
         {!invoice && (

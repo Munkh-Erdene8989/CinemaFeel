@@ -2994,6 +2994,7 @@ function SettingsAdmin({ settings, onSaved, notify }: { settings: Settings; onSa
         <AdminField label="Платформын нэр"><input value={draft.name} onChange={(e) => update("name", e.target.value)} className="admin-input" /></AdminField>
         <AdminField label="Дэмжлэгийн email"><input value={draft.email} onChange={(e) => update("email", e.target.value)} type="email" className="admin-input" /></AdminField>
         <AdminField label="Сарын эрхийн үнэ"><input value={draft.price} onChange={(e) => update("price", e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="admin-input" /></AdminField>
+        <AdminField label="7 хоногийн эрхийн үнэ"><input value={draft.weeklyPrice} onChange={(e) => update("weeklyPrice", e.target.value.replace(/\D/g, ""))} inputMode="numeric" className="admin-input" /></AdminField>
         <div className="border-t border-white/[.07] pt-5">
           {([
             ["registration", "Шинэ бүртгэл зөвшөөрөх", "Хэрэглэгч Google, email эсвэл утасны дугаараар шинээр бүртгүүлж болно."],

@@ -43,6 +43,7 @@ type QuoteInput = {
   seriesId?: string | null;
   code?: string;
   monthlyPrice: number;
+  weeklyPrice?: number;
   uid?: string;
 };
 
@@ -66,7 +67,7 @@ export async function viewerCheckoutQuote(input: QuoteInput): Promise<
   | { ok: false; error: string; status: number }
 > {
   const mode = viewerCheckoutMode(input.mode);
-  let originalAmount = checkoutListAmount(mode, { monthlyPrice: input.monthlyPrice });
+  let originalAmount = checkoutListAmount(mode, { monthlyPrice: input.monthlyPrice, weeklyPrice: input.weeklyPrice });
   let product = mode === "weekly" ? "CinemaFeel 7 хоног" : "CinemaFeel Plus";
   let seriesId: string | null = null;
 

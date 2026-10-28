@@ -5,7 +5,7 @@ import { animate } from "animejs";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { alreadyEntitled } from "@/lib/entitlement";
-import { WEEKLY_PRICE, type Series } from "@/lib/types";
+import { settingAmount, WEEKLY_PRICE, type Series } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
 import { coverFilm, isMatureLabel, publicCatalog } from "@/lib/mature";
 import { FilmCard } from "./film-card";
@@ -65,6 +65,7 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
   const titleLead = titleWords.length > 1 ? titleWords.slice(0, -1).join(" ") : featured?.title ?? "";
   const titleAccent = titleWords.length > 1 ? titleWords[titleWords.length - 1] : "";
   const monthly = Number(settings.price || 14900);
+  const weekly = settingAmount(settings.weeklyPrice, WEEKLY_PRICE);
   const heroRef = useRef<HTMLElement>(null);
   const mediaRef = useRef<HTMLDivElement>(null);
   const gridRef = useRef<HTMLDivElement>(null);
@@ -165,10 +166,10 @@ export function HomeView({ initialFeatured = null }: { initialFeatured?: Series 
             <div>
               <p className="text-[10px] font-black uppercase tracking-[.2em] text-[#ff6679]">CinemaFeel Plus</p>
               <h2 className="mt-2 text-xl font-black md:text-2xl">Бүх premium киног хязгааргүй үз</h2>
-              <p className="mt-2 text-xs text-zinc-400">7 хоног {formatMoney(WEEKLY_PRICE)} · Сард {formatMoney(monthly)} · Шинэ анги нэмэгдэнэ</p>
+              <p className="mt-2 text-xs text-zinc-400">7 хоног {formatMoney(weekly)} · Сард {formatMoney(monthly)} · Шинэ анги нэмэгдэнэ</p>
             </div>
             <button onClick={() => beginCheckout("weekly", featured ?? null)} className="offer-glow shrink-0 rounded-full bg-[#ff3d56] px-6 py-3 text-sm font-extrabold">
-              7 хоног · {formatMoney(WEEKLY_PRICE)}
+              7 хоног · {formatMoney(weekly)}
             </button>
           </div>
         </section>
