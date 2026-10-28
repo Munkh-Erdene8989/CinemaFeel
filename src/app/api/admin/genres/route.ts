@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { adminDb } from "@/lib/firebase-admin";
 import { canonicalGenre, loadGenres, sameGenre, saveGenres } from "@/lib/genres";
 import { jsonError, requireSuper } from "@/lib/http";
+import { reorderGenres } from "@/lib/genres-order";
 
 function cleanName(value: unknown) {
   return String(value ?? "").trim().replace(/\s+/g, " ");
@@ -19,6 +20,17 @@ export async function POST(request: NextRequest) {
   if (existing) return NextResponse.json({ genres, name: existing, created: false });
   const next = await saveGenres([...genres, name]);
   return NextResponse.json({ genres: next, name, created: true });
+}
+
+export async function PATCH(request: NextRequest) {
+  const gate = await requireSuper(request);
+  if (gate.error) return gate.error;
+  const body = (await request.json().catch(() => ({}))) as { genres?: unknown };
+  const current = await loadGenres();
+  const next = reorderGenres(current, body.genres);
+  if (!next) return jsonError("Ангиллын дараалал буруу байна.");
+  const saved = await saveGenres(next);
+  return NextResponse.json({ genres: saved });
 }
 
 export async function DELETE(request: NextRequest) {

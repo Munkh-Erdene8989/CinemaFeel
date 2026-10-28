@@ -1337,6 +1337,41 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
   const [youtubeOpen, setYoutubeOpen] = useState(false);
   const [genreName, setGenreName] = useState("");
   const [genreError, setGenreError] = useState("");
+  const [genreOrder, setGenreOrder] = useState<string[] | null>(null);
+  const [genreSaving, setGenreSaving] = useState(false);
+  const [dragFrom, setDragFrom] = useState<number | null>(null);
+  const [dragOver, setDragOver] = useState<number | null>(null);
+  const genreLock = useRef(false);
+  const dragIndex = useRef<number | null>(null);
+  const shownGenres = genreOrder ?? genres;
+  const saveGenreOrder = async (next: string[]) => {
+    if (genreLock.current || next.join("\0") === genres.join("\0")) return;
+    genreLock.current = true;
+    setGenreError("");
+    setGenreSaving(true);
+    setGenreOrder(next);
+    try {
+      const saved = await adminFetch<{ genres: string[] }>("/api/admin/genres", { method: "PATCH", body: JSON.stringify({ genres: next }) });
+      onGenres(saved.genres);
+      setGenreOrder(null);
+      notify("Ангиллын байрлал шинэчлэгдлээ.");
+    } catch (cause) {
+      setGenreOrder(null);
+      setGenreError(cause instanceof Error ? cause.message : "Ангиллын байрлал хадгалагдсангүй.");
+    } finally {
+      genreLock.current = false;
+      setGenreSaving(false);
+      setDragFrom(null);
+      setDragOver(null);
+    }
+  };
+  const moveGenre = (from: number, to: number) => {
+    if (from === to || from < 0 || to < 0 || from >= shownGenres.length || to >= shownGenres.length) return;
+    const next = [...shownGenres];
+    const [item] = next.splice(from, 1);
+    next.splice(to, 0, item);
+    void saveGenreOrder(next);
+  };
   const addGenre = async () => {
     setGenreError("");
     try {
@@ -1391,17 +1426,58 @@ function ContentAdmin({ content, genres, showOwner, canManageGenres, refreshSeri
       {canManageGenres && (
         <div className="mt-6 rounded-2xl border border-white/[.07] bg-[#141419] p-5">
           <p className="text-xs font-black uppercase tracking-[.16em] text-zinc-500">Контентийн төрөл</p>
-          <div className="mt-3 flex flex-wrap gap-2">
-            {genres.map((genre) => (
-              <span key={genre} className="flex items-center gap-2 rounded-full border border-white/10 px-3 py-1.5 text-xs font-bold">
-                {genre}
-                <button type="button" onClick={() => removeGenre(genre)} className="text-zinc-500 hover:text-red-400" aria-label={`${genre} төрлийг хасах`}>×</button>
-              </span>
+          <p className="mt-2 text-xs leading-5 text-zinc-600">Дээш, доош эсвэл чирж байрлуулна. Энэ дараалал нүүр хуудасны ангиллын байрлал болно.</p>
+          <div className="mt-3 flex flex-col gap-2">
+            {shownGenres.map((genre, index) => (
+              <div
+                key={genre}
+                onDragOver={(event) => {
+                  event.preventDefault();
+                  if (dragFrom !== null) setDragOver(index);
+                }}
+                onDrop={(event) => {
+                  event.preventDefault();
+                  const from = dragIndex.current;
+                  dragIndex.current = null;
+                  if (from !== null) moveGenre(from, index);
+                  setDragFrom(null);
+                  setDragOver(null);
+                }}
+                className={`flex items-center gap-2 rounded-xl border px-3 py-2 ${dragOver === index ? "border-[#ff536a]/60 bg-[#ff536a]/10" : "border-white/10 bg-black/20"} ${dragFrom === index ? "opacity-50" : ""}`}
+              >
+                <span
+                  draggable={!genreSaving}
+                  onDragStart={(event) => {
+                    dragIndex.current = index;
+                    setDragFrom(index);
+                    event.dataTransfer.effectAllowed = "move";
+                    event.dataTransfer.setData("text/plain", String(index));
+                  }}
+                  onDragEnd={() => {
+                    dragIndex.current = null;
+                    setDragFrom(null);
+                    setDragOver(null);
+                  }}
+                  className="w-5 cursor-grab text-center text-xs text-zinc-600 active:cursor-grabbing"
+                  aria-hidden="true"
+                >
+                  ⋮⋮
+                </span>
+                <span className="w-5 text-center text-[10px] font-black text-zinc-500">{index + 1}</span>
+                <span className="min-w-0 flex-1 truncate text-sm font-bold">{genre}</span>
+                <button type="button" disabled={genreSaving || index === 0} onClick={() => moveGenre(index, index - 1)} className="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/10 disabled:opacity-30" aria-label={`${genre} ангиллыг дээш`}>
+                  <Icon name="arrow" className="h-4 w-4 -rotate-90" />
+                </button>
+                <button type="button" disabled={genreSaving || index === shownGenres.length - 1} onClick={() => moveGenre(index, index + 1)} className="grid h-8 w-8 place-items-center rounded-lg text-zinc-400 hover:bg-white/10 disabled:opacity-30" aria-label={`${genre} ангиллыг доош`}>
+                  <Icon name="arrow" className="h-4 w-4 rotate-90" />
+                </button>
+                <button type="button" disabled={genreSaving} onClick={() => removeGenre(genre)} className="grid h-8 w-8 place-items-center rounded-lg text-zinc-500 hover:text-red-400 disabled:opacity-30" aria-label={`${genre} төрлийг хасах`}>×</button>
+              </div>
             ))}
           </div>
           <div className="mt-4 flex flex-col gap-2 sm:flex-row">
             <input value={genreName} onChange={(e) => setGenreName(e.target.value)} onKeyDown={(e) => e.key === "Enter" && genreName.trim() && addGenre()} placeholder="Шинэ төрөл, жишээ нь Адал явдал" className="admin-input sm:max-w-xs" />
-            <button disabled={!genreName.trim()} onClick={addGenre} className="h-12 rounded-xl bg-white px-4 text-xs font-extrabold text-black disabled:opacity-40">Төрөл нэмэх</button>
+            <button disabled={genreSaving || !genreName.trim()} onClick={addGenre} className="h-12 rounded-xl bg-white px-4 text-xs font-extrabold text-black disabled:opacity-40">Төрөл нэмэх</button>
           </div>
           {genreError && <p className="mt-3 text-xs text-red-400">{genreError}</p>}
         </div>
