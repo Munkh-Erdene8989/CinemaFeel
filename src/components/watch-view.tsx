@@ -29,6 +29,15 @@ function captionChoice(data: { subtitleUrl?: string; subtitleOffsetMs?: number }
   return data.subtitleUrl ? { url: data.subtitleUrl, offsetMs: Number(data.subtitleOffsetMs ?? 0) } : null;
 }
 
+type LockableOrientation = ScreenOrientation & {
+  lock?: (orientation: "landscape" | "portrait") => Promise<void>;
+};
+
+function lockOrientation(orientation: "landscape" | "portrait") {
+  const screenOrientation = screen.orientation as LockableOrientation | undefined;
+  return screenOrientation?.lock?.(orientation);
+}
+
 function showFirstTextTrack(target: EventTarget | null) {
   const player = target as { textTracks?: TextTrackList; media?: { textTracks?: TextTrackList } } | null;
   const tracks = player?.textTracks ?? player?.media?.textTracks;
@@ -316,7 +325,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
         screen.orientation?.unlock?.();
         return;
       }
-      if (landscape) void screen.orientation?.lock?.("landscape").catch(() => undefined);
+      if (landscape) void lockOrientation("landscape")?.catch(() => undefined);
       if (active === stage || !stage.contains(active)) return;
       document.exitFullscreen()
         .then(() => stage.requestFullscreen())
@@ -354,7 +363,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
     void (async () => {
       try {
         if (document.fullscreenElement !== stage) await stage.requestFullscreen();
-        if (!ignore) await screen.orientation?.lock?.("landscape");
+        if (!ignore) await lockOrientation("landscape");
       } catch {
         const video = findVideo(stage) as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
         if (!ignore) video?.webkitEnterFullscreen?.();
