@@ -76,26 +76,28 @@ export async function POST(request: NextRequest, context: { params: Promise<{ id
     telegramAnnounce: "pending",
   };
 
+  if (subtitleText.trim()) {
+    const subtitlePath = `subtitles/${id}/${episodeId}.srt`;
+    try {
+      await adminBucket().file(subtitlePath).save(subtitleText, {
+        resumable: false,
+        contentType: "text/plain; charset=utf-8",
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Storage холбогдсонгүй.";
+      return jsonError(`Хадмал хадгалагдсангүй. ${message}`, 503);
+    }
+    episode.subtitlePath = subtitlePath;
+    episode.subtitleOffsetMs = subtitleOffsetMs;
+  }
+
   if (youtubeId) {
     episode.source = "youtube";
     episode.youtubeId = youtubeId;
     episode.startAt = startAt;
     episode.subtitleOffsetMs = subtitleOffsetMs;
     const playback: { youtubeId: string; subtitlePath?: string } = { youtubeId };
-    if (subtitleText.trim()) {
-      const subtitlePath = `subtitles/${id}/${episodeId}.srt`;
-      try {
-        await adminBucket().file(subtitlePath).save(subtitleText, {
-          resumable: false,
-          contentType: "text/plain; charset=utf-8",
-        });
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "Storage холбогдсонгүй.";
-        return jsonError(`Хадмал хадгалагдсангүй. ${message}`, 503);
-      }
-      playback.subtitlePath = subtitlePath;
-      episode.subtitlePath = subtitlePath;
-    }
+    if (episode.subtitlePath) playback.subtitlePath = episode.subtitlePath;
     await series.collection("playback").doc(episodeId).set(playback);
   }
 

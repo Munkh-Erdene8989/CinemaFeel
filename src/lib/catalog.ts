@@ -126,7 +126,7 @@ export async function posterUrl(storagePath: string) {
 export async function deleteEpisodeMedia(seriesRef: DocumentReference, episodeId: string, data: DocumentData) {
   const playbackRef = seriesRef.collection("playback").doc(episodeId);
   const playback = await playbackRef.get();
-  const paths = [String(data.storagePath ?? ""), String(playback.data()?.subtitlePath ?? "")].filter(Boolean);
+  const paths = [...new Set([String(data.storagePath ?? ""), String(data.subtitlePath ?? ""), String(playback.data()?.subtitlePath ?? "")].filter(Boolean))];
   await Promise.all(paths.map((filePath) => adminBucket().file(filePath).delete({ ignoreNotFound: true })));
   if (playback.exists) await playbackRef.delete();
 }

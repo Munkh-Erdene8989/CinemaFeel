@@ -1747,7 +1747,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
     return true;
   };
 
-  const addEpisode = async (file: File, title: string, onProgress?: (percent: number) => void) => {
+  const addEpisode = async (file: File, title: string, subtitleText: string, onProgress?: (percent: number) => void) => {
     const id = seriesId || (await saveMeta());
     if (!id) return false;
     setBusy("Видео Firebase руу хуулж байна...");
@@ -1757,7 +1757,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
       const number = episodes.length + 1;
       const created = await adminFetch<ReleaseNotice & { episode: Episode }>(`/api/admin/series/${id}/episodes`, {
         method: "POST",
-        body: JSON.stringify({ number, title: title || `${number}-р анги`, storagePath, duration: 0 }),
+        body: JSON.stringify({ number, title: title || `${number}-р анги`, storagePath, duration: 0, subtitleText }),
       });
       setEpisodes((current) => [...current, created.episode]);
       rememberMail(created);
@@ -1911,7 +1911,7 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
           <div className="mt-3 space-y-2">
             {episodes.map((episode) => (
               <div key={episode.id} className="flex items-center justify-between rounded-xl border border-white/10 px-4 py-3 text-sm">
-                <span>{episode.number}. {episode.title} {episode.source === "youtube" ? "· YouTube" : episode.storagePath ? "" : "· видеогүй"}</span>
+                <span>{episode.number}. {episode.title} {episode.source === "youtube" ? "· YouTube" : episode.storagePath ? "" : "· видеогүй"}{episode.subtitlePath ? " · хадмал" : ""}</span>
                 <button onClick={() => removeEpisode(episode)} className="text-xs font-bold text-red-400">Устгах</button>
               </div>
             ))}
@@ -1962,21 +1962,32 @@ function ContentEditor({ film, genres, canAddGenre, onGenres, onClose, onSaved }
   );
 }
 
-function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string, onProgress: (percent: number) => void) => Promise<boolean> }) {
+function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string, subtitleText: string, onProgress: (percent: number) => void) => Promise<boolean> }) {
   const [title, setTitle] = useState("");
   const [file, setFile] = useState<File | null>(null);
+  const [subtitleText, setSubtitleText] = useState("");
+  const [subtitleName, setSubtitleName] = useState("");
   const [progress, setProgress] = useState<number | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
+  const srtRef = useRef<HTMLInputElement>(null);
   const uploading = progress !== null;
+  const cueCount = subtitleText.trim() ? subtitleText.split(/\n\s*\n/).filter((block) => /-->/.test(block)).length : 0;
+
+  const clearSubtitle = () => {
+    setSubtitleText("");
+    setSubtitleName("");
+    if (srtRef.current) srtRef.current.value = "";
+  };
 
   const submit = async () => {
     if (!file || uploading) return;
     setProgress(0);
-    const saved = await onUpload(file, title, setProgress);
+    const saved = await onUpload(file, title, subtitleText, setProgress);
     setProgress(null);
     if (!saved) return;
     setTitle("");
     setFile(null);
+    clearSubtitle();
     if (inputRef.current) inputRef.current.value = "";
   };
 
@@ -1988,6 +1999,29 @@ function EpisodeUpload({ onUpload }: { onUpload: (file: File, title: string, onP
         <button disabled={!file || uploading} onClick={submit} className={`rounded-xl px-4 text-xs font-extrabold ${uploading ? "bg-[#ff2a2a] text-white" : "bg-white text-black disabled:opacity-40"}`}>
           {uploading ? `${progress}%` : "Видео нэмэх"}
         </button>
+      </div>
+      <div className="mt-3">
+        <FilePicker
+          inputRef={srtRef}
+          accept=".srt,text/plain"
+          disabled={uploading}
+          buttonLabel="SRT хадмал"
+          emptyLabel="Хадмалгүй"
+          fileName={subtitleName}
+          onFile={(picked) => {
+            if (!picked) return;
+            void picked.text().then((text) => {
+              setSubtitleText(text);
+              setSubtitleName(picked.name);
+            });
+          }}
+        />
+        <div className="mt-2 flex flex-wrap items-center gap-3 text-xs text-zinc-500">
+          <span>{subtitleName ? `${subtitleName}${cueCount ? ` · ${cueCount} мөр` : ""}` : "SRT сонгоогүй. Хадмал заавал биш."}</span>
+          {subtitleText ? (
+            <button type="button" disabled={uploading} onClick={clearSubtitle} className="font-bold text-zinc-500 hover:text-white disabled:opacity-40">Хасах</button>
+          ) : null}
+        </div>
       </div>
       {uploading && (
         <div className="mt-3">

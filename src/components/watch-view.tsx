@@ -11,6 +11,8 @@ import { settingAmount, WEEKLY_PRICE, type Episode, type Series } from "@/lib/ty
 import { formatMoney } from "@/lib/format";
 import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { playbackMark } from "@/lib/playback-mark";
+import { srtToVtt } from "@/lib/srt";
+import { findVideo, readVideoSize } from "@/lib/video-frame";
 import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
 import { MediaImage } from "./media-image";
@@ -22,6 +24,23 @@ import { usePulse } from "./motion";
 import { useSite } from "./site-provider";
 
 const MuxPlayer = dynamic(() => import("@mux/mux-player-react"), { ssr: false });
+
+function captionChoice(data: { subtitleUrl?: string; subtitleOffsetMs?: number }) {
+  return data.subtitleUrl ? { url: data.subtitleUrl, offsetMs: Number(data.subtitleOffsetMs ?? 0) } : null;
+}
+
+function showFirstTextTrack(target: EventTarget | null) {
+  const player = target as { textTracks?: TextTrackList; media?: { textTracks?: TextTrackList } } | null;
+  const tracks = player?.textTracks ?? player?.media?.textTracks;
+  if (!tracks) return;
+  for (let index = 0; index < tracks.length; index += 1) {
+    const track = tracks[index];
+    if (track.kind === "subtitles" || track.kind === "captions") {
+      track.mode = "showing";
+      return;
+    }
+  }
+}
 
 function phoneOnlyAccount(email?: string | null, phone?: string | null) {
   return !String(email || "").includes("@") && Boolean(String(phone || "").trim());
@@ -39,12 +58,15 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   const [url, setUrl] = useState("");
   const [mux, setMux] = useState<{ playbackId: string; token: string } | null>(null);
   const [youtube, setYoutube] = useState<{ videoId: string; startAt: number; subtitleUrl: string; subtitleOffsetMs: number } | null>(null);
+  const [captions, setCaptions] = useState<{ url: string; offsetMs: number } | null>(null);
+  const [captionSrc, setCaptionSrc] = useState("");
   const [error, setError] = useState("");
   const [needsAuth, setNeedsAuth] = useState(false);
   const [needsPay, setNeedsPay] = useState(false);
   const [loading, setLoading] = useState(true);
   const [askEmail, setAskEmail] = useState(true);
   const [playbackKey, setPlaybackKey] = useState(0);
+  const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
   const loadedFor = useRef("");
   const fallbackUsed = useRef(false);
   const loadingRef = useRef<HTMLParagraphElement>(null);
@@ -126,6 +148,8 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
       setUrl("");
       setMux(null);
       setYoutube(null);
+      setCaptions(null);
+      setFrame(null);
       setNeedsAuth(false);
       setNeedsPay(false);
       let response: Response;
@@ -169,11 +193,13 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
       loadedFor.current = requestKey;
       if (data.provider === "mux" && data.playbackId && data.token) {
         setMux({ playbackId: data.playbackId, token: data.token });
+        setCaptions(captionChoice(data));
         setUrl("");
         setYoutube(null);
         return;
       }
       if (data.youtubeId) {
+        setCaptions(null);
         setYoutube({
           videoId: data.youtubeId,
           startAt: Number(data.startAt ?? 0),
@@ -185,11 +211,13 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
       }
       if (!data.url) {
         setYoutube(null);
+        setCaptions(null);
         setUrl("");
         setError(data.error || "Видео нээж чадсангүй.");
         return;
       }
       setYoutube(null);
+      setCaptions(captionChoice(data));
       setUrl(data.url);
     })();
     return () => {
@@ -211,8 +239,9 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
       headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
       body: JSON.stringify({ seriesId, episodeId: current.id, fallback: true }),
     });
-    const data = (await response.json().catch(() => ({}))) as { url?: string; error?: string };
+    const data = (await response.json().catch(() => ({}))) as { url?: string; error?: string; subtitleUrl?: string; subtitleOffsetMs?: number };
     setMux(null);
+    if (data.subtitleUrl) setCaptions(captionChoice(data));
     if (data.url) {
       setUrl(data.url);
       setError("");
@@ -232,18 +261,109 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   };
 
   useEffect(() => {
+    if (!captions?.url || mux || youtube) {
+      setCaptionSrc("");
+      return;
+    }
+    let ignore = false;
+    let objectUrl = "";
+    fetch(captions.url)
+      .then((response) => (response.ok ? response.text() : ""))
+      .then((text) => {
+        if (ignore || !text.trim()) return;
+        objectUrl = URL.createObjectURL(new Blob([srtToVtt(text, captions.offsetMs)], { type: "text/vtt" }));
+        setCaptionSrc(objectUrl);
+      })
+      .catch(() => undefined);
+    return () => {
+      ignore = true;
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+    };
+  }, [captions, mux, youtube]);
+
+  useEffect(() => {
+    if (!captionSrc) return;
+    const video = stageRef.current?.querySelector("video");
+    const track = video?.textTracks?.[0];
+    if (track) track.mode = "showing";
+  }, [captionSrc]);
+
+  useEffect(() => {
+    if (!mux) return;
+    const player = stageRef.current?.querySelector("mux-player") as (HTMLElement & { textTracks?: TextTrackList }) | null;
+    const tracks = player?.textTracks;
+    if (!tracks) return;
+    const enable = () => showFirstTextTrack(player);
+    tracks.addEventListener("addtrack", enable);
+    enable();
+    return () => tracks.removeEventListener("addtrack", enable);
+  }, [mux, current?.id]);
+
+  const landscape = Boolean(frame && frame.width > frame.height);
+
+  const captureFrame = (target: EventTarget | null) => {
+    const size = readVideoSize(target);
+    if (!size) return;
+    setFrame((currentFrame) => currentFrame?.width === size.width && currentFrame.height === size.height ? currentFrame : size);
+  };
+
+  useEffect(() => {
     const stage = stageRef.current;
     if (!stage || (!url && !mux)) return;
     const retarget = () => {
-      const current = document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
-      if (!current || current === stage || !stage.contains(current)) return;
+      const active = document.fullscreenElement || (document as Document & { webkitFullscreenElement?: Element | null }).webkitFullscreenElement;
+      if (!active) {
+        screen.orientation?.unlock?.();
+        return;
+      }
+      if (landscape) void screen.orientation?.lock?.("landscape").catch(() => undefined);
+      if (active === stage || !stage.contains(active)) return;
       document.exitFullscreen()
         .then(() => stage.requestFullscreen())
         .catch(() => undefined);
     };
     document.addEventListener("fullscreenchange", retarget);
     return () => document.removeEventListener("fullscreenchange", retarget);
+  }, [url, mux, landscape]);
+
+  useEffect(() => {
+    const stage = stageRef.current;
+    if (!stage || (!url && !mux)) return;
+    let timer = 0;
+    const measure = () => {
+      const video = findVideo(stage);
+      if (!video?.videoWidth) return;
+      captureFrame(video);
+      window.clearInterval(timer);
+    };
+    measure();
+    timer = window.setInterval(measure, 250);
+    const stop = window.setTimeout(() => window.clearInterval(timer), 15000);
+    return () => {
+      window.clearInterval(timer);
+      window.clearTimeout(stop);
+    };
   }, [url, mux]);
+
+  useEffect(() => {
+    if (!landscape || !current?.id) return;
+    const phone = window.matchMedia("(pointer: coarse) and (orientation: portrait)").matches;
+    const stage = stageRef.current;
+    if (!phone || !stage) return;
+    let ignore = false;
+    void (async () => {
+      try {
+        if (document.fullscreenElement !== stage) await stage.requestFullscreen();
+        if (!ignore) await screen.orientation?.lock?.("landscape");
+      } catch {
+        const video = findVideo(stage) as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null;
+        if (!ignore) video?.webkitEnterFullscreen?.();
+      }
+    })();
+    return () => {
+      ignore = true;
+    };
+  }, [landscape, current?.id]);
 
   usePulse(loading && !url && !mux && !youtube, loadingRef);
 
@@ -298,8 +418,8 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
       <button type="button" data-rise onClick={leave} className="relative z-20 inline-flex h-10 items-center rounded-full bg-white/10 px-4 text-sm font-bold text-white hover:bg-white/15">← Буцах</button>
-      <div className={youtube ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
-        <div data-rise data-delay="0.06" className={youtube ? "w-full bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
+      <div className={youtube || landscape ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
+        <div data-rise data-delay="0.06" className={youtube || landscape ? "w-full overflow-hidden rounded-3xl bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
           {youtube ? (
             <CustomYouTubePlayer
               key={current?.id}
@@ -321,7 +441,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
               watermark={watermark}
             />
           ) : (
-          <div ref={stageRef} className="relative aspect-[9/16] bg-zinc-900">
+          <div ref={stageRef} className="relative bg-zinc-900" style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "9 / 16" }}>
             {mux ? (
               <MuxPlayer
                 key={current?.id}
@@ -334,6 +454,14 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 poster={film.image || ""}
                 className="h-full w-full"
                 style={{ height: "100%", width: "100%", "--media-object-fit": "contain" }}
+                onLoadedMetadata={(event) => {
+                  captureFrame(event.currentTarget);
+                  showFirstTextTrack(event.currentTarget);
+                }}
+                onLoadedData={(event) => {
+                  captureFrame(event.currentTarget);
+                  showFirstTextTrack(event.currentTarget);
+                }}
                 onTimeUpdate={(event) => {
                   const seconds = Math.floor((event.currentTarget as { currentTime?: number }).currentTime ?? 0);
                   if (seconds > 0 && seconds % 5 === 0) saveProgress(seconds);
@@ -353,6 +481,11 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 disablePictureInPicture
                 playsInline
                 className="h-full w-full object-contain"
+                onLoadedMetadata={(event) => {
+                  captureFrame(event.currentTarget);
+                  const track = event.currentTarget.textTracks[0];
+                  if (track) track.mode = "showing";
+                }}
                 onContextMenu={(event) => event.preventDefault()}
                 onError={() => {
                   setUrl("");
@@ -362,7 +495,9 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                   const seconds = Math.floor(event.currentTarget.currentTime);
                   if (seconds > 0 && seconds % 5 === 0) saveProgress(seconds);
                 }}
-              />
+              >
+                {captionSrc ? <track kind="subtitles" src={captionSrc} srcLang="mn" label="Монгол" default /> : null}
+              </video>
             ) : (
               <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
                 {film.image ? <MediaImage src={film.image} alt="" fill priority sizes="(min-width: 1024px) 420px, 92vw" className="object-cover opacity-40" /> : null}

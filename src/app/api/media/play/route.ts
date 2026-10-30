@@ -47,13 +47,17 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const captions = {
+    subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
+    subtitleUrl: subtitlePath ? subtitleUrl(body.seriesId, episodeSnap.id) : "",
+  };
+
   if (youtubeId) {
     return finish(body.seriesId, user.uid, ownerId, {
       provider: "youtube",
       youtubeId,
       startAt: Number(data.startAt ?? 0),
-      subtitleOffsetMs: Number(data.subtitleOffsetMs ?? 0),
-      subtitleUrl: subtitlePath ? subtitleUrl(body.seriesId, episodeSnap.id) : "",
+      ...captions,
       title: data.title || series.title,
     }, true);
   }
@@ -78,14 +82,14 @@ export async function POST(request: NextRequest) {
   if (playbackProvider({ fallback: body.fallback, muxPlaybackId, muxStatus }) === "mux") {
     try {
       const token = await playbackToken(muxPlaybackId);
-      return finish(body.seriesId, user.uid, ownerId, { provider: "mux", playbackId: muxPlaybackId, token, title: data.title || series.title }, true);
+      return finish(body.seriesId, user.uid, ownerId, { provider: "mux", playbackId: muxPlaybackId, token, ...captions, title: data.title || series.title }, true);
     } catch (error) {
       console.warn("Mux токен үүссэнгүй.", error);
     }
   }
 
   const url = await readableObjectUrl(storagePath);
-  return finish(body.seriesId, user.uid, ownerId, { provider: "firebase", url, title: data.title || series.title }, !body.fallback);
+  return finish(body.seriesId, user.uid, ownerId, { provider: "firebase", url, ...captions, title: data.title || series.title }, !body.fallback);
 }
 
 function finish(seriesId: string, uid: string, ownerId: string, body: Record<string, unknown>, recordView: boolean) {
