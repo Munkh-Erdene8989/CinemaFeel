@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { clientAuth } from "@/lib/firebase";
 import { settingAmount, WEEKLY_PRICE, type CheckoutMode } from "@/lib/types";
 import { formatMoney } from "@/lib/format";
@@ -36,7 +37,12 @@ function clock(ms: number) {
   return [hours, minutes, seconds].map((part) => String(part).padStart(2, "0")).join(":");
 }
 
-export function RenewView({ code }: { code: string }) {
+function offerCode(value: string | null) {
+  return String(value ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 20);
+}
+
+export function RenewView() {
+  const code = offerCode(useSearchParams().get("code"));
   const { user, profile, ready, settings, openAuth, beginCheckout } = useSite();
   const [offer, setOffer] = useState<Offer | null>(null);
   const [offerError, setOfferError] = useState("");
@@ -93,7 +99,7 @@ export function RenewView({ code }: { code: string }) {
 
   return (
     <section className="mx-auto grid min-h-screen max-w-xl place-items-center px-5 pb-24 pt-28 text-center">
-      <div data-rise>
+      <div>
         <p className="text-xs font-bold uppercase tracking-[0.18em] text-[#ff536a]">Багц</p>
         <h1 className="mt-3 text-4xl font-black">{title}</h1>
         <p className="mx-auto mt-4 max-w-md text-sm leading-7 text-zinc-400">{profile?.status === "Түр зогссон" ? "Бүртгэл чинь түр зогссон байна." : copy}</p>

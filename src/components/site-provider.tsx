@@ -141,7 +141,8 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
       }
     });
     const stopSeries = onSnapshot(query(collection(db, "series"), where("status", "==", "Нийтлэгдсэн")), (snap) => {
-      setSeries(snap.docs.map((item) => seriesFromRecord(item.id, item.data())).sort((a, b) => b.createdAt - a.createdAt));
+      const now = Date.now();
+      setSeries(snap.docs.map((item) => seriesFromRecord(item.id, item.data(), now)).sort((a, b) => b.createdAt - a.createdAt));
       setReady(true);
     });
     const stopSettings = onSnapshot(doc(db, "settings", "app"), (snap) => {
@@ -307,10 +308,10 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
 
   return (
     <SiteContext.Provider value={value}>
-      {!pathname.startsWith("/c/") && <CinemaIntro />}
+      {!pathname.startsWith("/c/") && !pathname.startsWith("/watch") && <CinemaIntro />}
       <main ref={rootRef} data-site-root className={reels ? "h-dvh overflow-hidden bg-black text-white" : "min-h-screen overflow-hidden bg-[#08080a] pb-20 text-white selection:bg-[#ff3d56] md:pb-0"}>
         <PageMotion />
-        {!reels && <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a]/85 backdrop-blur-xl">
+        {!reels && <header data-chrome="bar" className="fixed inset-x-0 top-0 z-40 border-b border-white/[0.06] bg-[#08080a] md:bg-[#08080a]/85 md:backdrop-blur-xl">
           <div className="mx-auto flex h-[72px] max-w-[1440px] items-center gap-8 px-5 md:px-10 lg:px-16">
             <span data-chrome="logo">
               {creatorChrome ? (
@@ -356,7 +357,7 @@ export function SiteProvider({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </footer>}
-        {!reels && <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a]/95 shadow-2xl backdrop-blur-xl md:hidden">
+        {!reels && <nav data-chrome="dock" className="fixed inset-x-3 bottom-3 z-40 flex h-16 items-center justify-around rounded-2xl border border-white/10 bg-[#16161a] shadow-2xl md:hidden">
           {dock.map(([href, icon, label]) => {
             const active = href === homeHref ? view === "creator" || (href === "/" && view === "home") : view === href.slice(1);
             return (

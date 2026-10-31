@@ -1,9 +1,17 @@
 import type { Metadata } from "next";
+import { Manrope } from "next/font/google";
 import { Analytics } from "@vercel/analytics/next";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GoogleAnalytics } from "@/components/google-analytics";
 import { MetaPixel } from "@/components/meta-pixel";
 import "./globals.css";
+
+const manrope = Manrope({
+  subsets: ["cyrillic", "latin"],
+  display: "swap",
+  variable: "--font-manrope",
+  adjustFontFallback: true,
+});
 
 export const metadata: Metadata = {
   title: "Контентоо бүтээ. Орлогоо нэм.",
@@ -16,7 +24,7 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="mn">
+    <html lang="mn" className={manrope.variable}>
       <body>
         <GoogleAnalytics />
         <MetaPixel />

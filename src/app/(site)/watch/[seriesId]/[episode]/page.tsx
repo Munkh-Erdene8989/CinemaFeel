@@ -3,6 +3,7 @@ import { WatchView } from "@/components/watch-view";
 import { isMature } from "@/lib/mature";
 import { readSeries } from "@/lib/public-series";
 
+export const dynamic = "force-static";
 export const revalidate = 300;
 export const preferredRegion = "icn1";
 

@@ -16,8 +16,9 @@ export function seriesTranslation(value: unknown): TranslationKind | "" {
   return text === "Хадмал" || text === "Хэл" ? text : "";
 }
 
-export function seriesFromRecord(id: string, data: SeriesRecord, now = Date.now()): Series {
+export function seriesFromRecord(id: string, data: SeriesRecord, now = 0): Series {
   const price = Number(data.price ?? 0);
+  const stamp = now || 0;
   return {
     id,
     title: String(data.title ?? ""),
@@ -36,9 +37,9 @@ export function seriesFromRecord(id: string, data: SeriesRecord, now = Date.now(
     status: seriesStatus(data.status),
     translation: seriesTranslation(data.translation),
     featured: Boolean(data.featured),
-    year: Number(data.year ?? new Date(now).getFullYear()),
+    year: Number(data.year ?? (stamp ? new Date(stamp).getFullYear() : 0)),
     age: normalizeAge(data.age),
-    createdAt: Number(data.createdAt ?? now),
+    createdAt: Number(data.createdAt ?? stamp),
   };
 }
 

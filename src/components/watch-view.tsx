@@ -13,7 +13,6 @@ import { clientAuth, clientDb, firebaseConfigured } from "@/lib/firebase";
 import { playbackMark } from "@/lib/playback-mark";
 import { srtToVtt } from "@/lib/srt";
 import { findVideo, readVideoSize } from "@/lib/video-frame";
-import CustomYouTubePlayer from "../../ExampleVD/CustomYouTubePlayer.jsx";
 import { WatchSkeleton } from "./content-skeleton";
 import { MediaImage } from "./media-image";
 import { EmailPromptModal } from "./email-prompt-modal";
@@ -24,6 +23,7 @@ import { usePulse } from "./motion";
 import { useSite } from "./site-provider";
 
 const MuxPlayer = dynamic(() => import("@mux/mux-player-react"), { ssr: false });
+const CustomYouTubePlayer = dynamic(() => import("../../ExampleVD/CustomYouTubePlayer.jsx"), { ssr: false });
 
 function captionChoice(data: { subtitleUrl?: string; subtitleOffsetMs?: number }) {
   return data.subtitleUrl ? { url: data.subtitleUrl, offsetMs: Number(data.subtitleOffsetMs ?? 0) } : null;
@@ -76,6 +76,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   const [askEmail, setAskEmail] = useState(true);
   const [playbackKey, setPlaybackKey] = useState(0);
   const [frame, setFrame] = useState<{ width: number; height: number } | null>(null);
+  const [pictureReady, setPictureReady] = useState(false);
   const loadedFor = useRef("");
   const fallbackUsed = useRef(false);
   const loadingRef = useRef<HTMLParagraphElement>(null);
@@ -237,7 +238,8 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
   useEffect(() => {
     paywallRetry.current = false;
     fallbackUsed.current = false;
-  }, [seriesId, episodeNumber, user?.uid]);
+    setPictureReady(false);
+  }, [seriesId, episodeNumber, user?.uid, url, mux?.playbackId]);
 
   const useStoredFile = async () => {
     if (fallbackUsed.current || !current?.id || !user?.uid) return;
@@ -426,9 +428,11 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
 
   return (
     <section className="mx-auto min-h-screen max-w-[1440px] px-5 pb-24 pt-28 md:px-10 lg:px-16">
-      <button type="button" data-rise onClick={leave} className="relative z-20 inline-flex h-10 items-center rounded-full bg-white/10 px-4 text-sm font-bold text-white hover:bg-white/15">← Буцах</button>
+      <button type="button" onClick={leave} className="relative z-20 inline-flex h-10 items-center rounded-full bg-white/10 px-4 text-sm font-bold text-white hover:bg-white/15">← Буцах</button>
       <div className={youtube || landscape ? "mt-6 space-y-8" : "mt-6 grid items-start gap-8 lg:grid-cols-[minmax(280px,420px)_1fr]"}>
-        <div data-rise data-delay="0.06" className={youtube || landscape ? "w-full overflow-hidden rounded-3xl bg-black" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl bg-black"}>
+        <div className={`relative bg-zinc-900 ${youtube || landscape ? "w-full overflow-hidden rounded-3xl" : "mx-auto w-full max-w-[420px] overflow-hidden rounded-3xl"}`}>
+          {film.image ? <MediaImage src={film.image} alt="" fill priority quality={60} sizes="(min-width: 1024px) 420px, 92vw" className="object-cover" /> : null}
+          <div className="relative z-10">
           {youtube ? (
             <CustomYouTubePlayer
               key={current?.id}
@@ -450,7 +454,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
               watermark={watermark}
             />
           ) : (
-          <div ref={stageRef} className="relative bg-zinc-900" style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "9 / 16" }}>
+          <div ref={stageRef} className="relative" style={{ aspectRatio: frame ? `${frame.width} / ${frame.height}` : "9 / 16" }}>
             {mux ? (
               <MuxPlayer
                 key={current?.id}
@@ -460,14 +464,15 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 streamType="on-demand"
                 autoPlay
                 accentColor="#ff3d56"
-                poster={film.image || ""}
-                className="h-full w-full"
+                poster=""
+                className={`absolute inset-0 h-full w-full ${pictureReady ? "" : "opacity-0"}`}
                 style={{ height: "100%", width: "100%", "--media-object-fit": "contain" }}
                 onLoadedMetadata={(event) => {
                   captureFrame(event.currentTarget);
                   showFirstTextTrack(event.currentTarget);
                 }}
                 onLoadedData={(event) => {
+                  setPictureReady(true);
                   captureFrame(event.currentTarget);
                   showFirstTextTrack(event.currentTarget);
                 }}
@@ -483,13 +488,13 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
               <video
                 key={current?.id}
                 src={url}
-                poster={film.image || undefined}
                 autoPlay
                 controls
                 controlsList="nodownload"
                 disablePictureInPicture
                 playsInline
-                className="h-full w-full object-contain"
+                className={`absolute inset-0 h-full w-full object-contain ${pictureReady ? "" : "opacity-0"}`}
+                onLoadedData={() => setPictureReady(true)}
                 onLoadedMetadata={(event) => {
                   captureFrame(event.currentTarget);
                   const track = event.currentTarget.textTracks[0];
@@ -508,8 +513,7 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
                 {captionSrc ? <track kind="subtitles" src={captionSrc} srcLang="mn" label="Монгол" default /> : null}
               </video>
             ) : (
-              <div className="grid h-full place-items-center px-6 text-center text-sm text-zinc-400">
-                {film.image ? <MediaImage src={film.image} alt="" fill priority sizes="(min-width: 1024px) 420px, 92vw" className="object-cover opacity-40" /> : null}
+              <div className="absolute inset-0 grid place-items-center bg-black/55 px-6 text-center text-sm text-zinc-200">
                 <div className="relative">
                   {loading ? <p ref={loadingRef}>Ачааллаж байна...</p> : needsAuth ? "Үзэхийн тулд нэвтэрнэ үү." : needsPay && !entitled ? "Энэ ангийг үзэх эрхгүй байна." : error || "Видео оруулаагүй байна."}
                   {needsAuth && (
@@ -535,9 +539,10 @@ export function WatchView({ seriesId, episodeNumber, initialFilm = null }: { ser
             ) : null}
           </div>
           )}
+          </div>
         </div>
         <div id="watch-episodes">
-          <div data-rise data-delay="0.12">
+          <div>
             <p className="text-xs font-bold uppercase tracking-[.2em] text-[#ff536a]">{film?.genre}</p>
             <h1 className="mt-2 text-3xl font-black">{film?.title}</h1>
             <FilmDescription text={film?.description || ""} className="mt-3" />

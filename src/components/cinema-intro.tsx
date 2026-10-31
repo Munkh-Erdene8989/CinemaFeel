@@ -63,7 +63,7 @@ export function CinemaIntro() {
         <span />
       </div>
       <div className="cinema-intro__content">
-        <img className="cinema-intro__logo" src="/cinema-feel-header.png" alt="CinemaFeel" fetchPriority="high" />
+        <img className="cinema-intro__logo" src="/cinema-feel-header.png" alt="CinemaFeel" />
         <p className="cinema-intro__tagline">
           Контентоо бүтээ.
           <br />

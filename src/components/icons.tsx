@@ -38,7 +38,7 @@ export function Icon({ name, className = "h-5 w-5", fill = false }: { name: stri
 
 export function Logo({ onClick, href = "/", header = false }: { onClick?: () => void; href?: string; header?: boolean }) {
   const image = header ? (
-    <img src="/cinema-feel-header.png" alt="cinema feel" className="h-9 w-auto sm:h-11" />
+    <img src="/cinema-feel-header.png" alt="cinema feel" fetchPriority="low" decoding="async" className="h-9 w-auto sm:h-11" />
   ) : (
     <img src="/feel-cinema-logo.png" alt="feel cinema" className="h-11 w-auto sm:h-12" />
   );

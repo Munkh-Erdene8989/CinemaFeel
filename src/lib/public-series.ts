@@ -1,3 +1,4 @@
+import { unstable_cache } from "next/cache";
 import { cache } from "react";
 import type { QueryDocumentSnapshot } from "firebase-admin/firestore";
 import { adminDb } from "./firebase-admin";
@@ -9,7 +10,7 @@ function toSeries(docs: QueryDocumentSnapshot[]) {
   return docs.map((item) => seriesFromRecord(item.id, item.data()));
 }
 
-export const readSeries = cache(async (seriesId: string): Promise<Series | null> => {
+async function loadSeries(seriesId: string): Promise<Series | null> {
   try {
     const snap = await adminDb().collection("series").doc(seriesId).get();
     if (!snap.exists) return null;
@@ -17,6 +18,10 @@ export const readSeries = cache(async (seriesId: string): Promise<Series | null>
   } catch {
     return null;
   }
+}
+
+export const readSeries = cache(async (seriesId: string): Promise<Series | null> => {
+  return unstable_cache(() => loadSeries(seriesId), ["public-series", seriesId], { revalidate: 300 })();
 });
 
 export const readHomeFeatured = cache(async (): Promise<Series | null> => {
