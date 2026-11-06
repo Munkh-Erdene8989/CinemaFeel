@@ -620,7 +620,7 @@ export function AdminApp() {
             if (payment.mode === "creator" && payment.creatorId) setStaff((current) => current.map((admin) => admin.id === payment.creatorId ? { ...admin, active: false, paid: false } : admin));
           }} />}
           {section === "Төлбөр" && superAdmin && !paymentsReady && <p className="text-sm text-zinc-500">Ачааллаж байна...</p>}
-          {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} notify={notify} />}
+          {section === "Контент бүтээгчид" && superAdmin && <StaffAdmin staff={staff} content={content} lessons={lessons} revenue={revenue} payments={payments} onStaff={setStaff} onPayments={setPayments} notify={notify} />}
           {section === "Маркетинг" && superAdmin && <MarketingAdmin settings={settings} onSaved={setSettings} notify={notify} />}
           {section === "Тохиргоо" && superAdmin && <SettingsAdmin settings={settings} onSaved={setSettings} notify={notify} />}
         </div>
@@ -3301,7 +3301,7 @@ function RevenueAdmin({ revenue, showOwners, days, onDays }: { revenue: RevenueR
   );
 }
 
-function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notify }: { staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: RevenueReport | null; payments: Payment[]; onStaff: (update: (staff: StaffAdmin[]) => StaffAdmin[]) => void; notify: (message: string) => void }) {
+function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, onPayments, notify }: { staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: RevenueReport | null; payments: Payment[]; onStaff: (update: (staff: StaffAdmin[]) => StaffAdmin[]) => void; onPayments: (update: (payments: Payment[]) => Payment[]) => void; notify: (message: string) => void }) {
   const [name, setName] = useState("");
   const [username, setUsername] = useState("");
   const [email, setEmail] = useState("");
@@ -3309,6 +3309,8 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
   const [error, setError] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [pendingClose, setPendingClose] = useState<StaffAdmin | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<StaffAdmin | null>(null);
+  const [busy, setBusy] = useState(false);
   const selected = staff.find((admin) => admin.id === selectedId) ?? null;
   const list = usePaged(staff);
   const create = async () => {
@@ -3344,6 +3346,23 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
   const requestActive = (admin: StaffAdmin) => {
     if (admin.active) setPendingClose(admin);
     else void patch(admin.id, { active: true });
+  };
+  const remove = async (admin: StaffAdmin) => {
+    setBusy(true);
+    try {
+      await adminFetch(`/api/admin/staff/${admin.id}`, { method: "DELETE" });
+      onStaff((current) => current
+        .filter((item) => item.id !== admin.id)
+        .map((item) => item.invitedById === admin.id ? { ...item, invitedById: "" } : item));
+      onPayments((current) => current.map((payment) => payment.mode === "creator" && payment.status === "Хүлээгдэж буй" && (payment.creatorId === admin.id || payment.uid === `creator:${admin.id}`) ? { ...payment, status: "Амжилтгүй" } : payment));
+      setSelectedId((current) => current === admin.id ? null : current);
+      setPendingDelete(null);
+      notify("Контент бүтээгч устгагдлаа.");
+    } catch (cause) {
+      notify(cause instanceof Error ? cause.message : "Бүтээгч устсангүй.");
+    } finally {
+      setBusy(false);
+    }
   };
   return (
     <div>
@@ -3388,7 +3407,8 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
                 <td className={`px-5 font-bold ${admin.active ? "text-emerald-400" : "text-amber-400"}`}>{admin.active ? "Идэвхтэй" : "Хаалттай"}</td>
                 <td className="px-5">
                   <button onClick={() => setSelectedId(admin.id)} className="mr-3 font-bold text-white hover:text-[#ff536a]">Дэлгэрэнгүй</button>
-                  <button onClick={() => requestActive(admin)} className="font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+                  <button onClick={() => requestActive(admin)} className="mr-3 font-bold text-zinc-500 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+                  <button onClick={() => setPendingDelete(admin)} className="font-bold text-red-400">Устгах</button>
                 </td>
               </tr>
             ))}
@@ -3406,6 +3426,7 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
           payments={payments}
           onClose={() => setSelectedId(null)}
           onToggle={() => requestActive(selected)}
+          onDelete={() => setPendingDelete(selected)}
           onPassword={(password) => patch(selected.id, { password })}
         />
       )}
@@ -3422,8 +3443,23 @@ function StaffAdmin({ staff, content, lessons, revenue, payments, onStaff, notif
           }}
         />
       )}
+      {pendingDelete && (
+        <ConfirmModal
+          title="Бүтээгчийг устгах уу?"
+          body={deleteCreatorCopy(pendingDelete)}
+          confirmLabel="Устгах"
+          busy={busy}
+          onCancel={() => { if (!busy) setPendingDelete(null); }}
+          onConfirm={() => remove(pendingDelete)}
+        />
+      )}
     </div>
   );
+}
+
+function deleteCreatorCopy(admin: StaffAdmin) {
+  const name = admin.name || admin.username || "Энэ бүтээгч";
+  return `${name} нэвтрэх эрхээ алдаж, бүтээгч болон цалингийн жагсаалтаас гарна. Нийтэлсэн контент, мэдлэг, амжилттай төлбөр, орлогын бүртгэл хэвээр үлдэнэ. Урьсан бүтээгчдийн урилгын орлого энд зогсоно. Хүлээгдэж буй бүртгэлийн нэхэмжлэх цуцлагдана.`;
 }
 
 function safeLink(value: string) {
@@ -3437,7 +3473,7 @@ function safeLink(value: string) {
   }
 }
 
-function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onClose, onToggle, onPassword }: { admin: StaffAdmin; staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: AdminRevenue | null; payments: Payment[]; onClose: () => void; onToggle: () => void; onPassword: (password: string) => Promise<boolean> }) {
+function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onClose, onToggle, onDelete, onPassword }: { admin: StaffAdmin; staff: StaffAdmin[]; content: SeriesWithEpisodes[]; lessons: Lesson[]; revenue: AdminRevenue | null; payments: Payment[]; onClose: () => void; onToggle: () => void; onDelete: () => void; onPassword: (password: string) => Promise<boolean> }) {
   const [password, setPassword] = useState("");
   const series = content.filter((item) => item.ownerId === admin.id);
   const ownLessons = lessons.filter((item) => item.ownerId === admin.id);
@@ -3491,6 +3527,7 @@ function CreatorDetail({ admin, staff, content, lessons, revenue, payments, onCl
         )}
         <div className="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center">
           <button onClick={onToggle} className="rounded-xl border border-white/10 px-4 py-3 text-xs font-bold text-zinc-300 hover:text-white">{admin.active ? "Хаах" : "Нээх"}</button>
+          <button type="button" onClick={onDelete} className="rounded-xl border border-red-500/30 px-4 py-3 text-xs font-bold text-red-400">Устгах</button>
           <input value={password} onChange={(event) => setPassword(event.target.value)} type="password" placeholder="Шинэ нууц үг" className="admin-input sm:max-w-xs" />
           <button type="button" disabled={password.length < 6} onClick={savePassword} className="rounded-xl bg-white px-4 py-3 text-xs font-extrabold text-black disabled:opacity-40">Нууц үг солих</button>
         </div>

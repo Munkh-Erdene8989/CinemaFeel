@@ -83,9 +83,14 @@ export async function grantPayment(db: Firestore, paymentId: string, qpayPayment
   if (payment.status === "Амжилттай") return { ok: true as const, already: true };
   if (payment.status === "Буцаагдсан") return { ok: false as const, error: "Төлбөр буцаагдсан байна." };
 
+  if (payment.status === "Амжилтгүй") return { ok: false as const, error: "Төлбөр амжилтгүй." };
+
   if (payment.mode === "creator") {
     if (!payment.creatorId) return { ok: false as const, error: "Контент бүтээгч олдсонгүй." };
-    await db.collection("admins").doc(payment.creatorId).set({ active: true, paid: true, paidAt: Date.now() }, { merge: true });
+    const adminRef = db.collection("admins").doc(payment.creatorId);
+    const admin = await adminRef.get();
+    if (!admin.exists) return { ok: false as const, error: "Контент бүтээгч олдсонгүй." };
+    await adminRef.set({ active: true, paid: true, paidAt: Date.now() }, { merge: true });
     await attachCreatorViewers(db, payment.creatorId);
     await ref.set({ status: "Амжилттай", paymentId: qpayPaymentId, date: todayStamp() }, { merge: true });
     return { ok: true as const, already: false };
